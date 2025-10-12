@@ -1,17 +1,18 @@
 # app.py
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
+from routes.auth import auth_bp
+from routes.wallet import wallet_bp
 
 app = Flask(__name__)
 
-# Test route
+# Register route blueprints
+app.register_blueprint(auth_bp, url_prefix='/api')
+app.register_blueprint(wallet_bp, url_prefix='/api')
+
+# Optional root route to test server
 @app.route('/')
 def home():
-    return "Hello from Flask backend!"
-
-# Example API
-@app.route('/api/data', methods=['GET'])
-def get_data():
-    return jsonify({"message": "This is a test API response"})
+    return "Flask backend is running!"
 
 if __name__ == "__main__":
     app.run(debug=True)
