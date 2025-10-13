@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Shield, Zap, CheckCircle, ArrowRight, Menu, X } from 'lucide-react';
 
-export default function ZeroVaultHomepage() {
+export default function LandingPage() {
+  const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
@@ -49,11 +51,11 @@ export default function ZeroVaultHomepage() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex gap-3">
-            <button className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition font-semibold">
-              Launch App
+            <button onClick={() => navigate('/register')} className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition font-semibold">
+              Register
             </button>
-            <button className="px-6 py-2 border-2 border-blue-500 text-blue-400 rounded-lg hover:bg-blue-500 hover:bg-opacity-10 transition font-semibold">
-              GitHub
+            <button onClick={() => navigate('/login')} className="px-6 py-2 border-2 border-blue-500 text-blue-400 rounded-lg hover:bg-blue-500 hover:bg-opacity-10 transition font-semibold">
+              Login
             </button>
           </div>
 
@@ -105,7 +107,7 @@ export default function ZeroVaultHomepage() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2">
+            <button onClick={() => navigate('/register')} className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2">
               Start Protecting Now
               <ArrowRight className="w-5 h-5" />
             </button>
