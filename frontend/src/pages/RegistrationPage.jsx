@@ -6,6 +6,7 @@ import { Lock, Key, Eye, EyeOff, Shield } from 'lucide-react';
 
 export default function RegistrationPage() {
   const navigate = useNavigate();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -14,6 +15,11 @@ export default function RegistrationPage() {
   const handleRegister = (e) => {
     e.preventDefault();
     setStatus('');
+
+    if (!username) {
+      setStatus('Please enter a username');
+      return;
+    }
 
     if (!password || password.length < 8) {
       setStatus('Password must be at least 8 characters long');
@@ -47,6 +53,19 @@ export default function RegistrationPage() {
           </p>
 
           <form onSubmit={handleRegister} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                placeholder="Enter username"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">
                 Master Password
