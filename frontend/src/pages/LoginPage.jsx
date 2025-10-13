@@ -6,6 +6,7 @@ import { Lock, Eye, EyeOff, Shield } from 'lucide-react';
 
 export default function LoginPage({ onLoginSuccess }) {
   const navigate = useNavigate();
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState('');
@@ -13,6 +14,11 @@ export default function LoginPage({ onLoginSuccess }) {
   const handleLogin = (e) => {
     e.preventDefault();
     setStatus('');
+
+    if (!username) {
+      setStatus('Please enter your username');
+      return;
+    }
 
     if (!password) {
       setStatus('Please enter your password');
@@ -45,6 +51,19 @@ export default function LoginPage({ onLoginSuccess }) {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">
+                Username
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                placeholder="Enter your username"
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">
                 Master Password
