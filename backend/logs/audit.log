@@ -1,0 +1,39 @@
+2025-10-14 01:50:07,949 - WARNING -  * Debugger is active!
+2025-10-14 01:50:07,956 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:51:28,777 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\routes\\auth.py', reloading
+2025-10-14 01:51:32,491 - WARNING -  * Debugger is active!
+2025-10-14 01:51:32,508 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:54:29,098 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\routes\\auth.py', reloading
+2025-10-14 01:54:32,777 - WARNING -  * Debugger is active!
+2025-10-14 01:54:32,784 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:54:50,937 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\routes\\auth.py', reloading
+2025-10-14 01:54:54,333 - WARNING -  * Debugger is active!
+2025-10-14 01:54:54,340 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:56:39,805 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\routes\\auth.py', reloading
+2025-10-14 01:56:43,497 - WARNING -  * Debugger is active!
+2025-10-14 01:56:43,507 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:56:49,229 - INFO - 127.0.0.1 - - [14/Oct/2025 01:56:49] "GET / HTTP/1.1" 200 -
+2025-10-14 01:56:56,445 - INFO - 127.0.0.1 - - [14/Oct/2025 01:56:56] "GET / HTTP/1.1" 200 -
+2025-10-14 01:57:51,233 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-10-14 01:57:51,233 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-14 01:57:51,237 - INFO -  * Restarting with stat
+2025-10-14 01:57:53,929 - WARNING -  * Debugger is active!
+2025-10-14 01:57:53,935 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 01:57:54,776 - INFO - 127.0.0.1 - - [14/Oct/2025 01:57:54] "GET / HTTP/1.1" 200 -
+2025-10-14 02:00:28,802 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\routes\\auth.py', reloading
+2025-10-14 02:00:29,308 - INFO -  * Restarting with stat
+2025-10-14 02:00:32,494 - WARNING -  * Debugger is active!
+2025-10-14 02:00:32,504 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 02:01:06,979 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\utils\\db.py', reloading
+2025-10-14 02:01:07,621 - INFO -  * Restarting with stat
+2025-10-14 02:01:10,710 - WARNING -  * Debugger is active!
+2025-10-14 02:01:10,716 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 02:01:25,138 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\utils\\logger.py', reloading
+2025-10-14 02:01:25,615 - INFO -  * Restarting with stat
+2025-10-14 02:01:28,723 - WARNING -  * Debugger is active!
+2025-10-14 02:01:28,732 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 02:01:35,572 - INFO -  * Detected change in 'C:\\Users\\Vriddhi\\OneDrive\\Desktop\\zkp\\ZKP_CNS\\backend\\app.py', reloading
+2025-10-14 02:01:36,120 - INFO -  * Restarting with stat
+2025-10-14 02:01:39,092 - WARNING -  * Debugger is active!
+2025-10-14 02:01:39,098 - INFO -  * Debugger PIN: 696-363-085

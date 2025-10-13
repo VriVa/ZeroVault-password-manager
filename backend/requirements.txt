@@ -3,4 +3,5 @@ flask
 pymongo
 dnspython
 flask-cors
+pycryptodome
 
