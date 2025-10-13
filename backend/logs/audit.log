@@ -37,3 +37,19 @@
 2025-10-14 02:01:36,120 - INFO -  * Restarting with stat
 2025-10-14 02:01:39,092 - WARNING -  * Debugger is active!
 2025-10-14 02:01:39,098 - INFO -  * Debugger PIN: 696-363-085
+2025-10-14 02:16:45,969 - INFO - 127.0.0.1 - - [14/Oct/2025 02:16:45] "[31m[1mPOST /auth/register HTTP/1.1[0m" 400 -
+2025-10-14 02:17:02,416 - INFO - [REGISTER] user=vriddhi, details=New user registered.
+2025-10-14 02:17:02,575 - INFO - 127.0.0.1 - - [14/Oct/2025 02:17:02] "POST /auth/register HTTP/1.1" 200 -
+2025-10-14 02:19:06,412 - INFO - 127.0.0.1 - - [14/Oct/2025 02:19:06] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-14 02:20:12,640 - INFO - 127.0.0.1 - - [14/Oct/2025 02:20:12] "[35m[1mPOST /auth/verify HTTP/1.1[0m" 500 -
+2025-10-14 02:22:10,537 - INFO - 127.0.0.1 - - [14/Oct/2025 02:22:10] "[31m[1mPOST /auth/verify HTTP/1.1[0m" 400 -
+2025-10-14 02:23:24,578 - INFO - [REGISTER] user=aishani, details=New user registered.
+2025-10-14 02:23:24,588 - INFO - 127.0.0.1 - - [14/Oct/2025 02:23:24] "POST /auth/register HTTP/1.1" 200 -
+2025-10-14 02:23:54,958 - INFO - 127.0.0.1 - - [14/Oct/2025 02:23:54] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-14 02:24:58,860 - INFO - 127.0.0.1 - - [14/Oct/2025 02:24:58] "[31m[1mPOST /auth/verify HTTP/1.1[0m" 400 -
+2025-10-14 02:25:06,035 - INFO - 127.0.0.1 - - [14/Oct/2025 02:25:06] "[35m[1mPOST /auth/verify HTTP/1.1[0m" 500 -
+2025-10-14 02:30:07,954 - INFO - 127.0.0.1 - - [14/Oct/2025 02:30:07] "[31m[1mPOST /auth/register HTTP/1.1[0m" 400 -
+2025-10-14 02:30:19,266 - INFO - [REGISTER] user=shreesh, details=New user registered.
+2025-10-14 02:30:19,278 - INFO - 127.0.0.1 - - [14/Oct/2025 02:30:19] "POST /auth/register HTTP/1.1" 200 -
+2025-10-14 02:30:55,519 - INFO - 127.0.0.1 - - [14/Oct/2025 02:30:55] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-14 02:35:11,863 - INFO - 127.0.0.1 - - [14/Oct/2025 02:35:11] "[31m[1mPOST /auth/verify HTTP/1.1[0m" 400 -
