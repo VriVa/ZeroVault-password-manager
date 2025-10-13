@@ -1,114 +1,221 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Lock, Eye, EyeOff, Shield } from 'lucide-react';
+import { Lock, Eye, EyeOff, Shield, Sun, Moon, ArrowLeft, User, LogIn } from 'lucide-react';
 
-export default function LoginPage({ onLoginSuccess }) {
+export default function Login() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [darkMode, setDarkMode] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    username: '',
+    password: ''
+  });
+  
   const [showPassword, setShowPassword] = useState(false);
-  const [status, setStatus] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
 
-  const handleLogin = (e) => {
+  // Handle input changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // Handle form submit
+  const handleSubmit = (e) => {
     e.preventDefault();
-    setStatus('');
-
-    if (!username) {
-      setStatus('Please enter your username');
-      return;
-    }
-
-    if (!password) {
-      setStatus('Please enter your password');
-      return;
-    }
-
-    setStatus('Authenticating with ZKP...');
-    setTimeout(() => {
-      setStatus('Login successful!');
-      setTimeout(() => {
-        onLoginSuccess();
-        navigate('/vault');
-      }, 1000);
-    }, 1500);
+    
+    // Mock login
+    alert('Login successful!');
+    navigate('/dashboard'); // Will create dashboard later
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-green-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 border border-gray-100">
+    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
+      darkMode 
+        ? 'bg-gradient-to-b from-gray-900 via-gray-900 to-black' 
+        : 'bg-gradient-to-b from-gray-50 via-white to-gray-100'
+    }`}>
+      
+      {/* Background Blur Effects */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {darkMode ? (
+          <>
+            <div className="absolute top-20 left-20 w-96 h-96 bg-blue-500 rounded-full blur-3xl opacity-20"></div>
+            <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl opacity-20"></div>
+          </>
+        ) : (
+          <>
+            <div className="absolute top-20 left-20 w-96 h-96 bg-green-300 rounded-full blur-3xl opacity-20"></div>
+            <div className="absolute bottom-20 right-20 w-96 h-96 bg-green-400 rounded-full blur-3xl opacity-20"></div>
+          </>
+        )}
+      </div>
+
+      {/* Dark Mode Toggle */}
+      <button
+        onClick={() => setDarkMode(!darkMode)}
+        className={`fixed top-6 right-6 p-2 rounded-lg transition z-50 ${
+          darkMode 
+            ? 'bg-gray-800 hover:bg-gray-700 text-yellow-400' 
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+        }`}
+        aria-label="Toggle dark mode"
+      >
+        {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
+
+      {/* Back to Home */}
+      <button
+        onClick={() => navigate('/')}
+        className={`fixed top-6 left-6 p-2 rounded-lg transition z-50 ${
+          darkMode 
+            ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' 
+            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+        }`}
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </button>
+
+      <div className="w-full max-w-md relative z-10">
+        <div className={`rounded-2xl shadow-2xl p-8 transition-colors ${
+          darkMode 
+            ? 'bg-gray-800 border border-blue-500 border-opacity-20' 
+            : 'bg-white'
+        }`}>
+          
+          {/* Logo */}
           <div className="flex items-center justify-center mb-6">
-            <div className="bg-gradient-to-br from-emerald-500 to-green-600 p-4 rounded-2xl shadow-lg">
-              <Lock className="w-8 h-8 text-white" />
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+              darkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-green-500 to-green-600'
+            }`}>
+              <Shield className="w-7 h-7 text-white" />
             </div>
           </div>
           
-          <h2 className="text-3xl font-bold text-center mb-2 text-gray-900">Welcome Back</h2>
-          <p className="text-gray-500 text-center mb-8 text-sm">
-            Access your secure password vault
+          {/* Title */}
+          <h2 className={`text-3xl font-bold text-center mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            Welcome Back
+          </h2>
+          <p className={`text-center mb-8 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Sign in to access your secure vault
           </p>
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            
+            {/* Username */}
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">
-                Username
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Username or Email
               </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                placeholder="Enter your username"
-              />
+              <div className="relative">
+                <User className={`absolute left-3 top-3.5 w-5 h-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                <input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                  className={`w-full pl-11 pr-4 py-3 rounded-xl transition-all outline-none ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="Enter your username"
+                />
+              </div>
             </div>
 
+            {/* Password */}
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Master Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
+                <Lock className={`absolute left-3 top-3.5 w-5 h-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-11 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                  placeholder="Enter your master password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  className={`w-full pl-11 pr-11 py-3 rounded-xl transition-all outline-none ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="Enter your password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 transition-colors"
+                  className={`absolute right-3 top-3.5 ${darkMode ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'}`}
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
             </div>
 
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-800 flex items-start gap-2">
-              <Shield className="w-5 h-5 mt-0.5 flex-shrink-0" />
-              <span>Zero-Knowledge Proof ensures your password never leaves your device</span>
+            {/* Remember Me & Forgot Password */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="remember"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className={`w-4 h-4 rounded border-gray-300 focus:ring-2 ${
+                    darkMode ? 'text-blue-600 focus:ring-blue-500' : 'text-green-600 focus:ring-green-500'
+                  }`}
+                />
+                <label htmlFor="remember" className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Remember me
+                </label>
+              </div>
+              <button
+                type="button"
+                className={`text-sm font-semibold hover:underline ${
+                  darkMode ? 'text-blue-400' : 'text-green-600'
+                }`}
+              >
+                Forgot password?
+              </button>
             </div>
 
-            {status && (
-              <Alert className={status.includes('successful') ? 'bg-emerald-50 border-emerald-200' : status.includes('Authenticating') ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}>
-                <AlertDescription className={status.includes('successful') ? 'text-emerald-800' : status.includes('Authenticating') ? 'text-blue-800' : 'text-red-800'}>
-                  {status}
-                </AlertDescription>
-              </Alert>
-            )}
+            {/* Security Notice */}
+            <div className={`rounded-xl p-4 text-sm flex items-start gap-2 ${
+              darkMode 
+                ? 'bg-blue-500 bg-opacity-10 border border-blue-500 border-opacity-30 text-blue-300' 
+                : 'bg-green-50 border border-green-200 text-green-800'
+            }`}>
+              <Shield className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <span>
+                Your login is verified using zero-knowledge proofs. Your password never leaves your device.
+              </span>
+            </div>
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all">
-              Sign In Securely
-            </Button>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              className={`w-full py-3.5 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 ${
+                darkMode 
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                  : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+              }`}
+            >
+              <LogIn className="w-5 h-5" />
+              Sign In
+            </button>
           </form>
 
-          <div className="mt-8 text-center">
+          {/* Register Link */}
+          <div className="mt-6 text-center">
             <button
               onClick={() => navigate('/register')}
-              className="text-emerald-600 hover:text-emerald-700 text-sm font-semibold transition-colors"
+              className={`text-sm font-semibold transition-colors ${
+                darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-green-600 hover:text-green-700'
+              }`}
             >
               Don't have an account? <span className="underline">Create one</span>
             </button>
