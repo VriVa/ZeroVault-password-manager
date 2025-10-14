@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import RegistrationPage from './pages/RegistrationPage';
 import LoginPage from './pages/LoginPage';
 import LandingPage from './pages/LandingPage';
+import { Buffer } from 'buffer';
 import Dashboard from './pages/Dashboard';
+window.Buffer = Buffer;
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);

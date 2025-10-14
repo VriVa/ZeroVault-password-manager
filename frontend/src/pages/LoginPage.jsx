@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Shield, Sun, Moon, ArrowLeft, User, LogIn } from 'lucide-react';
+import { deriveRootKey } from '@/utils/kdf';
+import { computePublicY, generateProof } from '@/utils/zkp';
+import { requestChallenge, verifyLogin } from '@/utils/api';
 
 export default function Login() {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     username: '',
     password: ''
   });
-  
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+
+  const [showPassword, setShowPassword] = useState(false); 
+  const [status, setStatus] = useState('');
 
   // Handle input changes
   const handleChange = (e) => {
@@ -22,12 +25,48 @@ export default function Login() {
   };
 
   // Handle form submit
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Mock login
-    alert('Login successful!');
-    navigate('/dashboard'); // Will create dashboard later
+    setStatus('');
+
+    const username = formData.username;
+    const password = formData.password;
+
+    if (!username || !password) return setStatus('Please enter your credentials');
+
+    try {
+      setStatus('Requesting challenge...');
+      const challenge = await requestChallenge(username);
+      if (challenge.status !== 'success') return setStatus(challenge.message || 'Challenge failed');
+
+      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+      if (!salt_kdf || !kdf_params) return setStatus('No KDF data found. Please re-register.');
+
+      const saltBytes = Uint8Array.from(atob(salt_kdf), (c) => c.charCodeAt(0));
+      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+      const { x } = await computePublicY(rootKey);
+      const challenge_c = challenge.c;
+      const { R, s } = await generateProof(x, challenge_c);
+
+      setStatus('Verifying proof...');
+      const result = await verifyLogin({
+        username,
+        challenge_id: challenge.challenge_id,
+        R,
+        s
+      });
+
+      if (result.status === 'success') {
+        setStatus('Login successful!');
+        localStorage.setItem('session_token', result.session_token);
+        setTimeout(() => navigate('/vault'), 1000);
+      } else {
+        setStatus(result.message || 'Login failed');
+      }
+    } catch (err) {
+      setStatus('Error: ' + err.message);
+    }
   };
 
   return (
@@ -36,7 +75,6 @@ export default function Login() {
         ? 'bg-gradient-to-b from-gray-900 via-gray-900 to-black' 
         : 'bg-gradient-to-b from-gray-50 via-white to-gray-100'
     }`}>
-      
       {/* Background Blur Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {darkMode ? (
@@ -83,7 +121,6 @@ export default function Login() {
             ? 'bg-gray-800 border border-blue-500 border-opacity-20' 
             : 'bg-white'
         }`}>
-          
           {/* Logo */}
           <div className="flex items-center justify-center mb-6">
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
@@ -103,7 +140,6 @@ export default function Login() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            
             {/* Username */}
             <div>
               <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -157,32 +193,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="remember"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className={`w-4 h-4 rounded border-gray-300 focus:ring-2 ${
-                    darkMode ? 'text-blue-600 focus:ring-blue-500' : 'text-green-600 focus:ring-green-500'
-                  }`}
-                />
-                <label htmlFor="remember" className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Remember me
-                </label>
-              </div>
-              <button
-                type="button"
-                className={`text-sm font-semibold hover:underline ${
-                  darkMode ? 'text-blue-400' : 'text-green-600'
-                }`}
-              >
-                Forgot password?
-              </button>
-            </div>
-
+             
             {/* Security Notice */}
             <div className={`rounded-xl p-4 text-sm flex items-start gap-2 ${
               darkMode 
@@ -207,6 +218,27 @@ export default function Login() {
               <LogIn className="w-5 h-5" />
               Sign In
             </button>
+            {/* Status Message */}
+{status && (
+  <p
+    className={`mt-4 text-sm font-medium text-center transition-all ${
+      status.toLowerCase().includes('error') || 
+      status.toLowerCase().includes('fail')
+        ? darkMode
+          ? 'text-red-400'
+          : 'text-red-600'
+        : status.toLowerCase().includes('success')
+        ? darkMode
+          ? 'text-green-400'
+          : 'text-green-600'
+        : darkMode
+          ? 'text-gray-400'
+          : 'text-gray-600'
+    }`}
+  >
+    {status}
+  </p>
+)}
           </form>
 
           {/* Register Link */}

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Key, Eye, EyeOff, Shield, Mail, CheckCircle, Sun, Moon, ArrowLeft, User } from 'lucide-react';
+import { deriveRootKey } from '@/utils/kdf';
+import { computePublicY } from '@/utils/zkp';
+import { register } from '@/utils/api';
 
 export default function Register() {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     email: '',
@@ -13,17 +16,17 @@ export default function Register() {
     password: '',
     confirmPassword: ''
   });
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
+  const [status, setStatus] = useState('');
 
   // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
+
     // Calculate password strength
     if (name === 'password') {
       let strength = 0;
@@ -37,29 +40,10 @@ export default function Register() {
     }
   };
 
-  // Handle form submit
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match!');
-      return;
-    }
-    
-    if (!agreedToTerms) {
-      alert('Please accept terms and conditions');
-      return;
-    }
-    
-    // Mock success
-    alert('Account created successfully!');
-    navigate('/login');
-  };
-
   const getStrengthColor = () => {
-    if (passwordStrength <= 2) return darkMode ? 'bg-red-500' : 'bg-red-500';
-    if (passwordStrength <= 4) return darkMode ? 'bg-yellow-500' : 'bg-yellow-500';
-    return darkMode ? 'bg-green-500' : 'bg-green-500';
+    if (passwordStrength <= 2) return 'bg-red-500';
+    if (passwordStrength <= 4) return 'bg-yellow-500';
+    return 'bg-green-500';
   };
 
   const getStrengthText = () => {
@@ -68,13 +52,59 @@ export default function Register() {
     return 'Strong';
   };
 
+  // Registration logic
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus('');
+
+    const { username, password, confirmPassword } = formData;
+
+    if (!username) return setStatus('Please enter a username');
+    if (!password || password.length < 8)
+      return setStatus('Password must be at least 8 characters');
+    if (password !== confirmPassword) return setStatus('Passwords do not match');
+    
+
+    try {
+      setStatus('Generating Argon2id root key...');
+      const salt_kdf = crypto.getRandomValues(new Uint8Array(16));
+      const kdf_params = { alg: 'argon2id', mem_kib: 65536, iter: 2, par: 1 };
+
+      const rootKey = await deriveRootKey(password, salt_kdf, kdf_params);
+      const { x, publicY } = await computePublicY(rootKey);
+
+      // Save salt locally for login recomputation
+      localStorage.setItem(`salt_kdf_${username}`, btoa(String.fromCharCode(...salt_kdf)));
+      localStorage.setItem(`kdf_params_${username}`, JSON.stringify(kdf_params));
+      localStorage.setItem(`zkp_x_${username}`, x.toString());
+
+      const payload = {
+        username,
+        publicY,
+        salt_kdf: btoa(String.fromCharCode(...salt_kdf)),
+        kdf_params,
+        vault_blob: null
+      };
+
+      const res = await register(payload);
+
+      if (res.status === 'success') {
+        setStatus('Registration successful!');
+        setTimeout(() => navigate('/login'), 1500);
+      } else {
+        setStatus(res.message || 'Registration failed');
+      }
+    } catch (err) {
+      setStatus('Error: ' + err.message);
+    }
+  };
+
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
       darkMode 
         ? 'bg-gradient-to-b from-gray-900 via-gray-900 to-black' 
         : 'bg-gradient-to-b from-gray-50 via-white to-gray-100'
     }`}>
-      
       {/* Background Blur Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {darkMode ? (
@@ -121,7 +151,6 @@ export default function Register() {
             ? 'bg-gray-800 border border-blue-500 border-opacity-20' 
             : 'bg-white'
         }`}>
-          
           {/* Logo */}
           <div className="flex items-center justify-center mb-6">
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
@@ -141,7 +170,6 @@ export default function Register() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
-            
             {/* Email */}
             <div>
               <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -218,7 +246,6 @@ export default function Register() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              
               {/* Password Strength Meter */}
               {formData.password && (
                 <div className="mt-3">
@@ -285,28 +312,16 @@ export default function Register() {
               </span>
             </div>
 
-            {/* Terms Checkbox */}
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="terms"
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className={`mt-1 w-4 h-4 rounded border-gray-300 focus:ring-2 ${
-                  darkMode ? 'text-blue-600 focus:ring-blue-500' : 'text-green-600 focus:ring-green-500'
-                }`}
-              />
-              <label htmlFor="terms" className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                I agree to the{' '}
-                <button type="button" className={`font-semibold hover:underline ${darkMode ? 'text-blue-400' : 'text-green-600'}`}>
-                  Terms of Service
-                </button>
-                {' '}and{' '}
-                <button type="button" className={`font-semibold hover:underline ${darkMode ? 'text-blue-400' : 'text-green-600'}`}>
-                  Privacy Policy
-                </button>
-              </label>
-            </div>
+             
+
+            {/* Status Message */}
+            {status && (
+              <div className={`rounded-xl p-3 mt-2 text-sm font-semibold ${
+                status.includes('successful') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {status}
+              </div>
+            )}
 
             {/* Submit Button */}
             <button
