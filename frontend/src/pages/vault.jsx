@@ -32,6 +32,9 @@ export default function Dashboard() {
 
   const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [copiedId, setCopiedId] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordPromptValue, setPasswordPromptValue] = useState('');
 
   // Password Generator State
   const [generatorConfig, setGeneratorConfig] = useState({
@@ -71,7 +74,10 @@ export default function Dashboard() {
       const password = sessionStorage.getItem('temp_password');
       
       if (!salt_kdf || !kdf_params || !password) {
-        throw new Error('Missing decryption data');
+        // If the session doesn't have the in-memory master password, prompt the user to re-enter it
+        console.warn('Missing decryption data; prompting for master password');
+        setShowPasswordPrompt(true);
+        return;
       }
 
       // Derive keys and decrypt
@@ -96,8 +102,13 @@ export default function Dashboard() {
     try {
       const username = localStorage.getItem('current_user');
       const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
-      const password = sessionStorage.getItem('temp_password');
+        const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+        const password = sessionStorage.getItem('temp_password');
+
+        if (!password) {
+          // Missing in-memory temp password used for decryption/encryption
+          return { success: false, code: 'MISSING_TEMP_PASSWORD', error: 'Master password not available in session. Please re-enter your master password to save.' };
+        }
 
       const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
       const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
@@ -112,15 +123,17 @@ export default function Dashboard() {
       // Encrypt and send to server
       const vault_blob = await encryptVault(updatedVault, vaultKey, username);
       const updateResponse = await updateVault(vault_blob);
-      
-      if (updateResponse.status !== 'success') {
-        throw new Error('Failed to update vault on server');
+
+      if (!updateResponse || updateResponse.status !== 'success') {
+        const err = updateResponse && updateResponse.message ? updateResponse.message : 'Unknown server error';
+        console.error('Vault update failed, server response:', updateResponse);
+        return { success: false, error: String(err) };
       }
-      
-      return true;
+
+      return { success: true };
     } catch (error) {
       console.error('Failed to update vault:', error);
-      return false;
+      return { success: false, error: error.message || String(error) };
     }
   };
 
@@ -135,14 +148,20 @@ export default function Dashboard() {
     };
     
     const updatedPasswords = [...passwords, newPasswordEntry];
-    setPasswords(updatedPasswords);
-    
-    // Update server
-    const success = await updateVaultOnServer(updatedPasswords);
-    if (!success) {
-      // Revert local state if server update fails
-      setPasswords(passwords);
-      alert('Failed to save password to server');
+  // Close modal immediately (optimistic UX), add locally and attempt to persist. If persist fails mark as pending
+  setShowAddModal(false);
+  setPasswords(updatedPasswords);
+  const result = await updateVaultOnServer(updatedPasswords);
+    if (!result.success) {
+      // mark the last entry as pending so user can retry
+      setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
+      // if missing temp password, prompt user to re-enter
+      if (result.code === 'MISSING_TEMP_PASSWORD') {
+        setShowPasswordPrompt(true);
+        setPasswordPromptValue('');
+      }
+      // show a non-blocking UI message
+      setSaveError(result.error || 'Failed to save to server');
     } else {
       setShowAddModal(false);
       setNewPassword({
@@ -153,6 +172,21 @@ export default function Dashboard() {
         category: 'other',
         notes: ''
       });
+      setSaveError(null);
+    }
+  };
+
+  // Retry syncing any pending entries (attempts to upload the full vault again)
+  const syncPendingPasswords = async () => {
+    const pending = passwords.some(p => p.pending);
+    if (!pending) return;
+    const updated = passwords.map(p => { const cp = { ...p }; delete cp.pending; return cp; });
+    const result = await updateVaultOnServer(updated);
+    if (result.success) {
+      setPasswords(updated);
+      setSaveError(null);
+    } else {
+      setSaveError(result.error || 'Sync failed');
     }
   };
 
@@ -210,6 +244,7 @@ export default function Dashboard() {
     }
     setGeneratedPassword(password);
   };
+
 
   // Categories
   const categories = [
@@ -275,6 +310,16 @@ export default function Dashboard() {
           : 'bg-white border-gray-200'
       }`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
+          {saveError && (
+            <div className="mb-2">
+              <div className="rounded-md p-3 bg-yellow-50 border border-yellow-200 flex items-center justify-between">
+                <div className="text-sm text-yellow-800">{saveError}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => syncPendingPasswords()} className="px-3 py-1 bg-yellow-600 text-white rounded">Retry</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
@@ -345,6 +390,34 @@ export default function Dashboard() {
           </div>
         </div>
       </header>
+
+      {/* Password re-entry modal for missing temp password */}
+      {showPasswordPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className={`w-full max-w-md p-6 rounded-lg ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}>
+            <h3 className="text-lg font-semibold mb-2">Re-enter Master Password</h3>
+            <p className="text-sm mb-4">To save pending items we need your master password for key derivation. This is stored only in your session.</p>
+            <input type="password" value={passwordPromptValue} onChange={(e) => setPasswordPromptValue(e.target.value)} className="w-full px-3 py-2 rounded mb-4" placeholder="Master password" />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowPasswordPrompt(false)} className="px-3 py-2 rounded bg-gray-200">Cancel</button>
+              <button onClick={async () => {
+                // Save to session and attempt to decrypt and sync
+                sessionStorage.setItem('temp_password', passwordPromptValue);
+                setShowPasswordPrompt(false);
+                // Reload vault data (which will decrypt with the provided password)
+                try {
+                  await loadVaultData();
+                } catch (e) {
+                  console.error('Failed to load vault after re-entering password', e);
+                }
+                // Then try to sync pending entries
+                await syncPendingPasswords();
+                setPasswordPromptValue('');
+              }} className="px-3 py-2 rounded bg-blue-600 text-white">Save & Retry</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">
@@ -615,7 +688,7 @@ export default function Dashboard() {
 
       {/* Add Password Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50 bg-black/30 backdrop-blur-sm">
           <div className={`w-full max-w-lg rounded-xl p-6 ${
             darkMode ? 'bg-gray-800' : 'bg-white'
           }`}>
