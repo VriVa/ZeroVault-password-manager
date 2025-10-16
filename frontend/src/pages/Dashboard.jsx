@@ -1,0 +1,756 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
+  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings,
+  X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
+} from 'lucide-react';
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [darkMode, setDarkMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+
+  // Mock password data
+  const [passwords, setPasswords] = useState([
+    {
+      id: 1,
+      name: 'Gmail',
+      username: 'john@gmail.com',
+      password: 'SecurePass123!',
+      website: 'https://gmail.com',
+      category: 'email',
+      favorite: true,
+      lastModified: '2025-10-10',
+      strength: 'strong'
+    },
+    {
+      id: 2,
+      name: 'Facebook',
+      username: 'john.doe',
+      password: 'MyFb@2024',
+      website: 'https://facebook.com',
+      category: 'social',
+      favorite: false,
+      lastModified: '2025-10-08',
+      strength: 'medium'
+    },
+    {
+      id: 3,
+      name: 'Bank Account',
+      username: 'john_banking',
+      password: 'B@nk!Secure2024',
+      website: 'https://mybank.com',
+      category: 'financial',
+      favorite: true,
+      lastModified: '2025-10-05',
+      strength: 'strong'
+    },
+    {
+      id: 4,
+      name: 'Netflix',
+      username: 'john@gmail.com',
+      password: 'Netflix2024',
+      website: 'https://netflix.com',
+      category: 'entertainment',
+      favorite: false,
+      lastModified: '2025-10-01',
+      strength: 'weak'
+    }
+  ]);
+
+  const [newPassword, setNewPassword] = useState({
+    name: '',
+    username: '',
+    password: '',
+    website: '',
+    category: 'other',
+    notes: ''
+  });
+
+  const [visiblePasswords, setVisiblePasswords] = useState(new Set());
+  const [copiedId, setCopiedId] = useState(null);
+
+  // Categories
+  const categories = [
+    { id: 'all', name: 'All Items', icon: Key, count: passwords.length },
+    { id: 'email', name: 'Email', icon: Mail, count: passwords.filter(p => p.category === 'email').length },
+    { id: 'social', name: 'Social Media', icon: Globe, count: passwords.filter(p => p.category === 'social').length },
+    { id: 'financial', name: 'Financial', icon: CreditCard, count: passwords.filter(p => p.category === 'financial').length },
+    { id: 'entertainment', name: 'Entertainment', icon: Globe, count: passwords.filter(p => p.category === 'entertainment').length },
+  ];
+
+  // Password Generator State
+  const [generatorConfig, setGeneratorConfig] = useState({
+    length: 16,
+    uppercase: true,
+    lowercase: true,
+    numbers: true,
+    symbols: true
+  });
+  const [generatedPassword, setGeneratedPassword] = useState('');
+
+  // Functions
+  const togglePasswordVisibility = (id) => {
+    setVisiblePasswords(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const generatePassword = () => {
+    let charset = '';
+    if (generatorConfig.uppercase) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (generatorConfig.lowercase) charset += 'abcdefghijklmnopqrstuvwxyz';
+    if (generatorConfig.numbers) charset += '0123456789';
+    if (generatorConfig.symbols) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    
+    let password = '';
+    for (let i = 0; i < generatorConfig.length; i++) {
+      password += charset.charAt(Math.floor(Math.random() * charset.length));
+    }
+    setGeneratedPassword(password);
+  };
+
+  const handleAddPassword = () => {
+    const newEntry = {
+      id: Date.now(),
+      ...newPassword,
+      favorite: false,
+      lastModified: new Date().toISOString().split('T')[0],
+      strength: 'medium'
+    };
+    setPasswords([...passwords, newEntry]);
+    setShowAddModal(false);
+    setNewPassword({
+      name: '',
+      username: '',
+      password: '',
+      website: '',
+      category: 'other',
+      notes: ''
+    });
+  };
+
+  const handleDeletePassword = (id) => {
+    if (confirm('Are you sure you want to delete this password?')) {
+      setPasswords(passwords.filter(p => p.id !== id));
+    }
+  };
+
+  const toggleFavorite = (id) => {
+    setPasswords(passwords.map(p => 
+      p.id === id ? { ...p, favorite: !p.favorite } : p
+    ));
+  };
+
+  // Filter passwords
+  const filteredPasswords = passwords.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         p.username.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const getStrengthColor = (strength) => {
+    switch(strength) {
+      case 'weak': return darkMode ? 'text-red-400' : 'text-red-600';
+      case 'medium': return darkMode ? 'text-yellow-400' : 'text-yellow-600';
+      case 'strong': return darkMode ? 'text-green-400' : 'text-green-600';
+      default: return darkMode ? 'text-gray-400' : 'text-gray-600';
+    }
+  };
+
+  const getCategoryIcon = (category) => {
+    switch(category) {
+      case 'email': return Mail;
+      case 'social': return Globe;
+      case 'financial': return CreditCard;
+      default: return Key;
+    }
+  };
+
+  return (
+    <div className={`min-h-screen transition-colors duration-300 ${
+      darkMode ? 'bg-gray-900' : 'bg-gray-50'
+    }`}>
+      
+      {/* Header */}
+      <header className={`sticky top-0 z-40 border-b transition-colors ${
+        darkMode 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-200'
+      }`}>
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                darkMode ? 'bg-gradient-to-br from-blue-500 to-purple-600' : 'bg-gradient-to-br from-green-500 to-green-600'
+              }`}>
+                <Shield className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  ZeroVault
+                </h1>
+                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  Password Manager
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-2 rounded-lg transition ${
+                  darkMode 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              
+              
+              
+              <button
+                onClick={() => navigate('/')}
+                className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
+                  darkMode 
+                    ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 
+                    : 'bg-red-50 hover:bg-red-100 text-red-600'
+                }`}
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="text-sm font-semibold">Logout</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="grid grid-cols-12 gap-6">
+          
+          {/* Sidebar */}
+          <div className="col-span-12 lg:col-span-3">
+            <div className={`rounded-xl p-4 ${
+              darkMode ? 'bg-gray-800' : 'bg-white'
+            }`}>
+              <h3 className={`text-sm font-bold mb-4 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Categories
+              </h3>
+              <div className="space-y-2">
+                {categories.map(cat => {
+                  const Icon = cat.icon;
+                  return (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition ${
+                        selectedCategory === cat.id
+                          ? darkMode
+                            ? 'bg-blue-500 bg-opacity-20 text-blue-400'
+                            : 'bg-green-100 text-green-700'
+                          : darkMode
+                            ? 'text-gray-400 hover:bg-gray-700'
+                            : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon className="w-4 h-4" />
+                        <span className="text-sm font-medium">{cat.name}</span>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        selectedCategory === cat.id
+                          ? darkMode ? 'bg-blue-500' : 'bg-green-500'
+                          : darkMode ? 'bg-gray-700' : 'bg-gray-200'
+                      } text-white`}>
+                        {cat.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="col-span-12 lg:col-span-9">
+            
+            {/* Search & Actions Bar */}
+            <div className={`rounded-xl p-4 mb-6 ${
+              darkMode ? 'bg-gray-800' : 'bg-white'
+            }`}>
+              <div className="flex flex-col md:flex-row gap-4">
+                {/* Search */}
+                <div className="flex-1 relative">
+                  <Search className={`absolute left-3 top-3 w-5 h-5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search passwords..."
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-lg outline-none transition ${
+                      darkMode 
+                        ? 'bg-gray-700 border border-gray-600 text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500' 
+                        : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                    }`}
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowPasswordGenerator(true)}
+                    className={`px-4 py-2.5 rounded-lg transition flex items-center gap-2 ${
+                      darkMode 
+                        ? 'bg-purple-500 bg-opacity-20 hover:bg-opacity-30 text-purple-400' 
+                        : 'bg-purple-50 hover:bg-purple-100 text-purple-600'
+                    }`}
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span className="text-sm font-semibold hidden sm:block">Generate</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className={`px-4 py-2.5 rounded-lg transition flex items-center gap-2 ${
+                      darkMode 
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                        : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                    } text-white font-semibold shadow-lg`}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm">Add Password</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Password Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredPasswords.map(item => {
+                const CategoryIcon = getCategoryIcon(item.category);
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-xl p-5 transition-all hover:scale-[1.02] ${
+                      darkMode 
+                        ? 'bg-gray-800 border border-gray-700 hover:border-blue-500' 
+                        : 'bg-white border border-gray-200 hover:border-green-500 hover:shadow-lg'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          darkMode ? 'bg-gray-700' : 'bg-gray-100'
+                        }`}>
+                          <CategoryIcon className={`w-5 h-5 ${darkMode ? 'text-blue-400' : 'text-green-600'}`} />
+                        </div>
+                        <div>
+                          <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {item.name}
+                          </h3>
+                          <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {item.website}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => toggleFavorite(item.id)}
+                        className={`text-xl transition ${
+                          item.favorite 
+                            ? 'text-yellow-500' 
+                            : darkMode ? 'text-gray-600 hover:text-yellow-500' : 'text-gray-300 hover:text-yellow-500'
+                        }`}
+                      >
+                        ★
+                      </button>
+                    </div>
+
+                    {/* Username */}
+                    <div className="mb-3">
+                      <label className={`text-xs font-semibold mb-1 block ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Username
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <p className={`flex-1 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          {item.username}
+                        </p>
+                        <button
+                          onClick={() => copyToClipboard(item.username, `user-${item.id}`)}
+                          className={`p-1.5 rounded transition ${
+                            darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {copiedId === `user-${item.id}` ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Copy className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="mb-4">
+                      <label className={`text-xs font-semibold mb-1 block ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                        Password
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <p className={`flex-1 text-sm font-mono ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          {visiblePasswords.has(item.id) ? item.password : '••••••••••••'}
+                        </p>
+                        <button
+                          onClick={() => togglePasswordVisibility(item.id)}
+                          className={`p-1.5 rounded transition ${
+                            darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {visiblePasswords.has(item.id) ? (
+                            <EyeOff className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          ) : (
+                            <Eye className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => copyToClipboard(item.password, `pass-${item.id}`)}
+                          className={`p-1.5 rounded transition ${
+                            darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          {copiedId === `pass-${item.id}` ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Copy className={`w-4 h-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className={`text-xs font-medium ${getStrengthColor(item.strength)}`}>
+                          Strength: {item.strength}
+                        </span>
+                        <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                          Modified: {item.lastModified}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <button
+                        className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
+                          darkMode 
+                            ? 'bg-blue-500 bg-opacity-20 hover:bg-opacity-30 text-blue-400' 
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
+                        }`}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeletePassword(item.id)}
+                        className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
+                          darkMode 
+                            ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 
+                            : 'bg-red-50 hover:bg-red-100 text-red-600'
+                        }`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Empty State */}
+            {filteredPasswords.length === 0 && (
+              <div className={`rounded-xl p-12 text-center ${
+                darkMode ? 'bg-gray-800' : 'bg-white'
+              }`}>
+                <Shield className={`w-16 h-16 mx-auto mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-300'}`} />
+                <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  No passwords found
+                </h3>
+                <p className={`text-sm mb-6 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {searchQuery ? 'Try a different search term' : 'Add your first password to get started'}
+                </p>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className={`px-6 py-3 rounded-lg font-semibold ${
+                    darkMode 
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                      : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                  } text-white`}
+                >
+                  Add Password
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Add Password Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className={`w-full max-w-lg rounded-xl p-6 ${
+            darkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Add New Password
+              </h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className={`p-2 rounded-lg transition ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                }`}
+              >
+                <X className={`w-5 h-5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => { e.preventDefault(); handleAddPassword(); }} className="space-y-4">
+              <div>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Service Name
+                </label>
+                <input
+                  type="text"
+                  value={newPassword.name}
+                  onChange={(e) => setNewPassword({...newPassword, name: e.target.value})}
+                  required
+                  className={`w-full px-4 py-2.5 rounded-lg outline-none transition ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="e.g., Gmail"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Username/Email
+                </label>
+                <input
+                  type="text"
+                  value={newPassword.username}
+                  onChange={(e) => setNewPassword({...newPassword, username: e.target.value})}
+                  required
+                  className={`w-full px-4 py-2.5 rounded-lg outline-none transition ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="username@example.com"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Password
+                </label>
+                <input
+                  type="text"
+                  value={newPassword.password}
+                  onChange={(e) => setNewPassword({...newPassword, password: e.target.value})}
+                  required
+                  className={`w-full px-4 py-2.5 rounded-lg outline-none transition ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="Enter password"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Website URL
+                </label>
+                <input
+                  type="url"
+                  value={newPassword.website}
+                  onChange={(e) => setNewPassword({...newPassword, website: e.target.value})}
+                  className={`w-full px-4 py-2.5 rounded-lg outline-none transition ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                  placeholder="https://example.com"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  Category
+                </label>
+                <select
+                  value={newPassword.category}
+                  onChange={(e) => setNewPassword({...newPassword, category: e.target.value})}
+                  className={`w-full px-4 py-2.5 rounded-lg outline-none transition ${
+                    darkMode 
+                      ? 'bg-gray-700 border border-gray-600 text-white focus:ring-2 focus:ring-blue-500' 
+                      : 'border border-gray-200 focus:ring-2 focus:ring-green-500'
+                  }`}
+                >
+                  <option value="email">Email</option>
+                  <option value="social">Social Media</option>
+                  <option value="financial">Financial</option>
+                  <option value="entertainment">Entertainment</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-semibold transition ${
+                    darkMode 
+                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-white ${
+                    darkMode 
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                      : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+                  }`}
+                >
+                  Add Password
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Generator Modal */}
+      {showPasswordGenerator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className={`w-full max-w-md rounded-xl p-6 ${
+            darkMode ? 'bg-gray-800' : 'bg-white'
+          }`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Password Generator
+              </h2>
+              <button
+                onClick={() => setShowPasswordGenerator(false)}
+                className={`p-2 rounded-lg transition ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                }`}
+              >
+                <X className={`w-5 h-5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+              </button>
+            </div>
+
+            {/* Generated Password Display */}
+            <div className={`p-4 rounded-lg mb-6 ${
+              darkMode ? 'bg-gray-700' : 'bg-gray-100'
+            }`}>
+              <div className="flex items-center justify-between">
+                <p className={`font-mono text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {generatedPassword || 'Click generate'}
+                </p>
+                <button
+                  onClick={() => copyToClipboard(generatedPassword, 'generated')}
+                  className={`p-2 rounded-lg transition ${
+                    darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
+                  }`}
+                >
+                  {copiedId === 'generated' ? (
+                    <Check className="w-5 h-5 text-green-500" />
+                  ) : (
+                    <Copy className={`w-5 h-5 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Length Slider */}
+            <div className="mb-6">
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Length: {generatorConfig.length}
+              </label>
+              <input
+                type="range"
+                min="8"
+                max="32"
+                value={generatorConfig.length}
+                onChange={(e) => setGeneratorConfig({...generatorConfig, length: parseInt(e.target.value)})}
+                className="w-full"
+              />
+            </div>
+
+            {/* Options */}
+            <div className="space-y-3 mb-6">
+              {[
+                { key: 'uppercase', label: 'Uppercase (A-Z)' },
+                { key: 'lowercase', label: 'Lowercase (a-z)' },
+                { key: 'numbers', label: 'Numbers (0-9)' },
+                { key: 'symbols', label: 'Symbols (!@#$...)' }
+              ].map(option => (
+                <label key={option.key} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={generatorConfig[option.key]}
+                    onChange={(e) => setGeneratorConfig({...generatorConfig, [option.key]: e.target.checked})}
+                    className={`w-4 h-4 rounded focus:ring-2 ${
+                      darkMode ? 'text-blue-600 focus:ring-blue-500' : 'text-green-600 focus:ring-green-500'
+                    }`}
+                  />
+                  <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {option.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            {/* Generate Button */}
+            <button
+              onClick={generatePassword}
+              className={`w-full px-4 py-3 rounded-lg font-semibold text-white flex items-center justify-center gap-2 ${
+                darkMode 
+                  ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                  : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
+              }`}
+            >
+              <RefreshCw className="w-5 h-5" />
+              Generate Password
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
