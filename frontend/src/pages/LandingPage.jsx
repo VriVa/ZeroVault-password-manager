@@ -130,7 +130,11 @@ export default function LandingPage() {
                 <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
               </button>
 
-              <button className={`w-full px-6 py-2 text-white rounded-lg mt-2 ${
+              <button onClick={() => {
+                  const token = localStorage.getItem('session_token');
+                  if (token) navigate('/dashboard'); else navigate('/login');
+                }}
+                className={`w-full px-6 py-2 text-white rounded-lg mt-2 ${
                 darkMode 
                   ? 'bg-gradient-to-r from-blue-600 to-purple-600' 
                   : 'bg-gradient-to-r from-green-500 to-green-600 shadow-md'
@@ -190,7 +194,10 @@ export default function LandingPage() {
 
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button onClick={() => navigate('/register')} className={`px-8 py-4 text-white rounded-lg transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2 ${
+            <button onClick={() => {
+                const token = localStorage.getItem('session_token');
+                if (token) navigate('/dashboard'); else navigate('/login');
+              }} className={`px-8 py-4 text-white rounded-lg transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2 ${
               darkMode 
                 ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
                 : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'
@@ -760,7 +767,11 @@ export default function LandingPage() {
 
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <button className={`px-8 py-4 text-white rounded-lg transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2 ${
+            <button onClick={() => {
+                const token = localStorage.getItem('session_token');
+                if (token) navigate('/dashboard'); else navigate('/login');
+              }}
+              className={`px-8 py-4 text-white rounded-lg transition text-lg font-semibold shadow-lg flex items-center justify-center gap-2 ${
               darkMode 
                 ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
                 : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700'

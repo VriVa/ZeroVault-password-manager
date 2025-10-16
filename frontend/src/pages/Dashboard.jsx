@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
-  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings,
+  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings, Home,
   X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
 } from 'lucide-react';
 import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
@@ -308,6 +308,29 @@ export default function Dashboard() {
               
               <button
                 onClick={() => navigate('/')}
+                className={`px-3 py-2 rounded-lg transition flex items-center gap-2 ${
+                  darkMode 
+                    ? 'bg-gray-700 bg-opacity-10 hover:bg-opacity-20 text-white' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <Home className="w-4 h-4" />
+                <span className="text-sm font-semibold">Home</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  // Clear session storage and known session keys then redirect to login
+                  try {
+                    localStorage.removeItem('session_token');
+                    localStorage.removeItem('session_user');
+                    localStorage.removeItem('vault_enc');
+                    localStorage.removeItem('wallet_priv_enc');
+                  } catch {
+                    // ignore
+                  }
+                  navigate('/login');
+                }}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
                   darkMode 
                     ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 
