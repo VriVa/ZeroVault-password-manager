@@ -324,6 +324,7 @@ export default function Dashboard() {
                   try {
                     localStorage.removeItem('session_token');
                     localStorage.removeItem('session_user');
+                    localStorage.removeItem('current_user');
                     localStorage.removeItem('vault_enc');
                     localStorage.removeItem('wallet_priv_enc');
                   } catch {

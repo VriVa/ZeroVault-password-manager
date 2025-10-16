@@ -9,6 +9,8 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
+  const [sessionToken, setSessionToken] = useState(null);
+  const [sessionUser, setSessionUser] = useState(null); // will read from `current_user` localStorage key
 
 
   useEffect(() => {
@@ -17,6 +19,24 @@ export default function LandingPage() {
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Track session state from localStorage so the navbar can update when user logs in/out
+  useEffect(() => {
+    const loadSession = () => {
+      const token = localStorage.getItem('session_token');
+      // login stores username under `current_user`
+      const user = localStorage.getItem('current_user') || localStorage.getItem('session_user');
+      setSessionToken(token);
+      setSessionUser(user);
+    };
+    loadSession();
+
+    const onStorage = (e) => {
+      if (e.key === 'session_token' || e.key === 'session_user' || e.key === 'current_user') loadSession();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
 
@@ -83,21 +103,31 @@ export default function LandingPage() {
             >
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-
-            <button onClick={() => navigate('/register')} className={`px-6 py-2 text-white rounded-lg transition font-semibold ${
-              darkMode 
-                ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
-                : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md'
-            }`}>
-              Register
-            </button>
-            <button onClick={() => navigate('/login')} className={`px-6 py-2 rounded-lg transition font-semibold ${
-              darkMode 
-                ? 'border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:bg-opacity-10' 
-                : 'border-2 border-green-500 text-green-600 hover:bg-green-50'
-            }`}>
-              Login
-            </button>
+            {/* If a session exists, show username__ active instead of Register/Login */}
+            {sessionToken ? (
+              <div className="flex items-center gap-3">
+                <span className={`px-4 py-2 rounded-full text-sm font-medium ${darkMode ? 'text-blue-300 bg-gray-800 bg-opacity-20' : 'text-green-700 bg-green-100'}`}>
+                  {sessionUser ? sessionUser : 'User'}
+                </span>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => navigate('/register')} className={`px-6 py-2 text-white rounded-lg transition font-semibold ${
+                  darkMode 
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700' 
+                    : 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md'
+                }`}>
+                  Register
+                </button>
+                <button onClick={() => navigate('/login')} className={`px-6 py-2 rounded-lg transition font-semibold ${
+                  darkMode 
+                    ? 'border-2 border-blue-500 text-blue-400 hover:bg-blue-500 hover:bg-opacity-10' 
+                    : 'border-2 border-green-500 text-green-600 hover:bg-green-50'
+                }`}>
+                  Login
+                </button>
+              </>
+            )}
           </div>
 
 
