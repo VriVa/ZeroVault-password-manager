@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
   Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings,
   X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
 } from 'lucide-react';
+import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
+import { getVault, updateVault } from '@/utils/api';
+import { deriveRootKey } from '@/utils/kdf';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -13,55 +16,10 @@ export default function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
-
-  // Mock password data
-  const [passwords, setPasswords] = useState([
-    {
-      id: 1,
-      name: 'Gmail',
-      username: 'john@gmail.com',
-      password: 'SecurePass123!',
-      website: 'https://gmail.com',
-      category: 'email',
-      favorite: true,
-      lastModified: '2025-10-10',
-      strength: 'strong'
-    },
-    {
-      id: 2,
-      name: 'Facebook',
-      username: 'john.doe',
-      password: 'MyFb@2024',
-      website: 'https://facebook.com',
-      category: 'social',
-      favorite: false,
-      lastModified: '2025-10-08',
-      strength: 'medium'
-    },
-    {
-      id: 3,
-      name: 'Bank Account',
-      username: 'john_banking',
-      password: 'B@nk!Secure2024',
-      website: 'https://mybank.com',
-      category: 'financial',
-      favorite: true,
-      lastModified: '2025-10-05',
-      strength: 'strong'
-    },
-    {
-      id: 4,
-      name: 'Netflix',
-      username: 'john@gmail.com',
-      password: 'Netflix2024',
-      website: 'https://netflix.com',
-      category: 'entertainment',
-      favorite: false,
-      lastModified: '2025-10-01',
-      strength: 'weak'
-    }
-  ]);
+  
+  // REAL VAULT DATA - replace mock
+  const [passwords, setPasswords] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [newPassword, setNewPassword] = useState({
     name: '',
@@ -75,15 +33,6 @@ export default function Dashboard() {
   const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [copiedId, setCopiedId] = useState(null);
 
-  // Categories
-  const categories = [
-    { id: 'all', name: 'All Items', icon: Key, count: passwords.length },
-    { id: 'email', name: 'Email', icon: Mail, count: passwords.filter(p => p.category === 'email').length },
-    { id: 'social', name: 'Social Media', icon: Globe, count: passwords.filter(p => p.category === 'social').length },
-    { id: 'financial', name: 'Financial', icon: CreditCard, count: passwords.filter(p => p.category === 'financial').length },
-    { id: 'entertainment', name: 'Entertainment', icon: Globe, count: passwords.filter(p => p.category === 'entertainment').length },
-  ];
-
   // Password Generator State
   const [generatorConfig, setGeneratorConfig] = useState({
     length: 16,
@@ -94,7 +43,142 @@ export default function Dashboard() {
   });
   const [generatedPassword, setGeneratedPassword] = useState('');
 
-  // Functions
+  // Load vault data on component mount
+  useEffect(() => {
+    loadVaultData();
+  }, []);
+
+  const loadVaultData = async () => {
+    try {
+      setLoading(true);
+      const sessionToken = localStorage.getItem('session_token');
+      const username = localStorage.getItem('current_user');
+      
+      if (!sessionToken || !username) {
+        navigate('/login');
+        return;
+      }
+
+      // Get encrypted vault from server
+      const vaultResponse = await getVault();
+      if (vaultResponse.status !== 'success') {
+        throw new Error('Failed to fetch vault');
+      }
+
+      // Get stored keys for decryption
+      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+      const password = sessionStorage.getItem('temp_password');
+      
+      if (!salt_kdf || !kdf_params || !password) {
+        throw new Error('Missing decryption data');
+      }
+
+      // Derive keys and decrypt
+      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+      const vaultKey = await deriveVaultKey(rootKey, username);
+      
+      const decryptedVault = await decryptVault(vaultResponse.vault_blob, vaultKey, username);
+      
+      // Set the actual passwords from vault
+      setPasswords(decryptedVault.passwords || []);
+      
+    } catch (error) {
+      console.error('Failed to load vault:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update vault on server
+  const updateVaultOnServer = async (updatedPasswords) => {
+    try {
+      const username = localStorage.getItem('current_user');
+      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+      const password = sessionStorage.getItem('temp_password');
+
+      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+      const vaultKey = await deriveVaultKey(rootKey, username);
+
+      // Create updated vault
+      const updatedVault = {
+        passwords: updatedPasswords,
+        wallet: null
+      };
+
+      // Encrypt and send to server
+      const vault_blob = await encryptVault(updatedVault, vaultKey, username);
+      const updateResponse = await updateVault(vault_blob);
+      
+      if (updateResponse.status !== 'success') {
+        throw new Error('Failed to update vault on server');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to update vault:', error);
+      return false;
+    }
+  };
+
+  // Password management functions
+  const handleAddPassword = async () => {
+    const newPasswordEntry = {
+      id: Date.now(),
+      ...newPassword,
+      favorite: false,
+      lastModified: new Date().toISOString().split('T')[0],
+      strength: 'medium'
+    };
+    
+    const updatedPasswords = [...passwords, newPasswordEntry];
+    setPasswords(updatedPasswords);
+    
+    // Update server
+    const success = await updateVaultOnServer(updatedPasswords);
+    if (!success) {
+      // Revert local state if server update fails
+      setPasswords(passwords);
+      alert('Failed to save password to server');
+    } else {
+      setShowAddModal(false);
+      setNewPassword({
+        name: '',
+        username: '',
+        password: '',
+        website: '',
+        category: 'other',
+        notes: ''
+      });
+    }
+  };
+
+  const handleDeletePassword = async (id) => {
+    if (confirm('Are you sure you want to delete this password?')) {
+      const updatedPasswords = passwords.filter(p => p.id !== id);
+      setPasswords(updatedPasswords);
+      
+      const success = await updateVaultOnServer(updatedPasswords);
+      if (!success) {
+        setPasswords(passwords);
+        alert('Failed to delete password from server');
+      }
+    }
+  };
+
+  const toggleFavorite = async (id) => {
+    const updatedPasswords = passwords.map(p => 
+      p.id === id ? { ...p, favorite: !p.favorite } : p
+    );
+    setPasswords(updatedPasswords);
+    
+    await updateVaultOnServer(updatedPasswords);
+  };
+
+  // UI helper functions
   const togglePasswordVisibility = (id) => {
     setVisiblePasswords(prev => {
       const newSet = new Set(prev);
@@ -127,37 +211,14 @@ export default function Dashboard() {
     setGeneratedPassword(password);
   };
 
-  const handleAddPassword = () => {
-    const newEntry = {
-      id: Date.now(),
-      ...newPassword,
-      favorite: false,
-      lastModified: new Date().toISOString().split('T')[0],
-      strength: 'medium'
-    };
-    setPasswords([...passwords, newEntry]);
-    setShowAddModal(false);
-    setNewPassword({
-      name: '',
-      username: '',
-      password: '',
-      website: '',
-      category: 'other',
-      notes: ''
-    });
-  };
-
-  const handleDeletePassword = (id) => {
-    if (confirm('Are you sure you want to delete this password?')) {
-      setPasswords(passwords.filter(p => p.id !== id));
-    }
-  };
-
-  const toggleFavorite = (id) => {
-    setPasswords(passwords.map(p => 
-      p.id === id ? { ...p, favorite: !p.favorite } : p
-    ));
-  };
+  // Categories
+  const categories = [
+    { id: 'all', name: 'All Items', icon: Key, count: passwords.length },
+    { id: 'email', name: 'Email', icon: Mail, count: passwords.filter(p => p.category === 'email').length },
+    { id: 'social', name: 'Social Media', icon: Globe, count: passwords.filter(p => p.category === 'social').length },
+    { id: 'financial', name: 'Financial', icon: CreditCard, count: passwords.filter(p => p.category === 'financial').length },
+    { id: 'entertainment', name: 'Entertainment', icon: Globe, count: passwords.filter(p => p.category === 'entertainment').length },
+  ];
 
   // Filter passwords
   const filteredPasswords = passwords.filter(p => {
@@ -185,6 +246,23 @@ export default function Dashboard() {
     }
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className={`mt-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            Loading your vault...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal dashboard content when not loading
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
@@ -227,8 +305,6 @@ export default function Dashboard() {
               >
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
-              
-              
               
               <button
                 onClick={() => navigate('/')}

@@ -26,3 +26,28 @@ export async function verifyLogin(payload) {
   });
   return res.json();
 }
+// Add to utils/api.js
+export async function getVault() {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/vault`, {
+    method: 'GET',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    }
+  });
+  return res.json();
+}
+
+export async function updateVault(vault_blob) {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/vault`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    },
+    body: JSON.stringify({ vault_blob })
+  });
+  return res.json();
+}
