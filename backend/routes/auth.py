@@ -32,10 +32,8 @@ def get_username_from_token():
     session = sessions.get(token)
     if not session:
         return None
-    if datetime.utcnow() > session["expires_at"]:
-        del sessions[token]  # remove expired
-        return None
-    return session["username"]
+    # Sessions are persistent until explicit logout. Do not expire automatically.
+    return session.get("username")
 
 
 
@@ -181,10 +179,9 @@ def verify_proof():
             # Reset failed attempts on success
             login_attempts[username] = {"failed_attempts": 0, "blocked_until": None}
 
-            # Create session token with TTL (15 minutes)
+            # Create session token without TTL; session persists until logout
             token = secrets.token_hex(16)
-            expires_at = datetime.utcnow() + timedelta(minutes=15)
-            sessions[token] = {"username": username, "expires_at": expires_at}
+            sessions[token] = {"username": username}
             log_event("LOGIN_SUCCESS", username=username, details="ZKP proof verified successfully.")
 
             vault_blob = user.get("vault_blob", None)
@@ -192,8 +189,7 @@ def verify_proof():
                 "status": "success",
                 "message": "Login verified",
                 "vault_blob": vault_blob,
-                "session_token": token,
-                "expires_at": expires_at.isoformat()
+                "session_token": token
             }), 200
 
         else:
@@ -255,5 +251,92 @@ def update_vault():
     log_event("VAULT_UPDATE", username=username, details="User updated vault.")
 
     return jsonify({"status": "success", "message": "Vault updated successfully"})
+
+
+
+@auth_bp.route("/vault/entries", methods=["GET"])
+def get_plain_entries():
+    """
+    Return plaintext vault entries for the authenticated user.
+    """
+    username = get_username_from_token()
+    if not username:
+        return jsonify({"status": "error", "message": "Invalid or expired token"}), 401
+
+    user = users.find_one({"username": username})
+    entries = user.get("plain_entries", []) if user else []
+    return jsonify({"status": "success", "entries": entries})
+
+
+@auth_bp.route("/vault/entries", methods=["POST"])
+def add_plain_entry():
+    """
+    Append a plaintext vault entry to the user's plain_entries array.
+    Expects JSON body with the entry object (any fields). The server will attach a simple id and timestamp if not provided.
+    """
+    username = get_username_from_token()
+    if not username:
+        return jsonify({"status": "error", "message": "Invalid or expired token"}), 401
+
+    data = request.get_json() or {}
+    entry = data.get("entry") or data
+
+    # Basic normalization: ensure an id and created_at
+    try:
+        entry_id = entry.get("id") if isinstance(entry, dict) and entry.get("id") else str(uuid.uuid4())
+    except Exception:
+        entry_id = str(uuid.uuid4())
+
+    entry.setdefault("id", entry_id)
+    entry.setdefault("created_at", datetime.utcnow().isoformat())
+
+    try:
+        users.update_one(
+            {"username": username},
+            {"$push": {"plain_entries": entry}, "$set": {"updated_at": datetime.utcnow()}},
+            upsert=True
+        )
+        log_event("PLAIN_ENTRY_ADD", username=username, details=f"Added plain entry {entry.get('id')}")
+        return jsonify({"status": "success", "message": "Entry saved"}), 201
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+@auth_bp.route("/vault/entries/<entry_id>", methods=["DELETE"])
+def delete_plain_entry(entry_id):
+    """
+    Delete a plaintext entry from the user's plain_entries array by id.
+    """
+    username = get_username_from_token()
+    if not username:
+        return jsonify({"status": "error", "message": "Invalid or expired token"}), 401
+
+    try:
+        res = users.update_one(
+            {"username": username},
+            {"$pull": {"plain_entries": {"id": entry_id}}, "$set": {"updated_at": datetime.utcnow()}}
+        )
+        if res.modified_count > 0:
+            log_event("PLAIN_ENTRY_DELETE", username=username, details=f"Deleted plain entry {entry_id}")
+            return jsonify({"status": "success", "message": "Entry deleted"}), 200
+        else:
+            # Not found - return success for idempotency
+            return jsonify({"status": "success", "message": "Entry not found"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@auth_bp.route("/auth/logout", methods=["POST"])
+def logout():
+    """Invalidate the session token (logout)."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"status": "error", "message": "Missing token"}), 400
+    token = auth_header.split()[1]
+    if token in sessions:
+        del sessions[token]
+    log_event("LOGOUT", details="User logged out")
+    return jsonify({"status": "success", "message": "Logged out"})
 
     

@@ -6,7 +6,7 @@ import {
   X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
 } from 'lucide-react';
 import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
-import { getVault, updateVault } from '@/utils/api';
+import { getVault, updateVault, addPlainEntry, getPlainEntries, deletePlainEntry, logout } from '@/utils/api';
 import { deriveRootKey } from '@/utils/kdf';
 
 export default function Dashboard() {
@@ -62,6 +62,18 @@ export default function Dashboard() {
         return;
       }
 
+      // Try loading persisted plaintext entries first (stored without encryption)
+      try {
+        const plainResp = await getPlainEntries();
+        if (plainResp && plainResp.status === 'success' && Array.isArray(plainResp.entries)) {
+          setPasswords(plainResp.entries || []);
+          setLoading(false);
+          return; // prefer plain entries as the source of truth for the UI
+        }
+      } catch (e) {
+        // ignore and fallback to encrypted vault
+        console.warn('Failed to load plain entries, falling back to encrypted vault:', e);
+      }
       // Get encrypted vault from server
       const vaultResponse = await getVault();
       if (vaultResponse.status !== 'success') {
@@ -151,19 +163,15 @@ export default function Dashboard() {
   // Close modal immediately (optimistic UX), add locally and attempt to persist. If persist fails mark as pending
   setShowAddModal(false);
   setPasswords(updatedPasswords);
-  const result = await updateVaultOnServer(updatedPasswords);
-    if (!result.success) {
-      // mark the last entry as pending so user can retry
+  // Per user request: store entries in MongoDB WITHOUT encryption under plain_entries
+  try {
+    const addRes = await addPlainEntry(newPasswordEntry);
+    if (!addRes || addRes.status !== 'success') {
+      // fallback: mark pending and show error
       setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
-      // if missing temp password, prompt user to re-enter
-      if (result.code === 'MISSING_TEMP_PASSWORD') {
-        setShowPasswordPrompt(true);
-        setPasswordPromptValue('');
-      }
-      // show a non-blocking UI message
-      setSaveError(result.error || 'Failed to save to server');
+      setSaveError(addRes && addRes.message ? addRes.message : 'Failed to save plain entry');
     } else {
-      setShowAddModal(false);
+      // saved successfully
       setNewPassword({
         name: '',
         username: '',
@@ -174,6 +182,11 @@ export default function Dashboard() {
       });
       setSaveError(null);
     }
+  } catch (err) {
+    // optimistic UI already added entry; mark pending for retry
+    setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
+    setSaveError(err.message || 'Network error while saving plain entry');
+  }
   };
 
   // Retry syncing any pending entries (attempts to upload the full vault again)
@@ -190,18 +203,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeletePassword = async (id) => {
-    if (confirm('Are you sure you want to delete this password?')) {
-      const updatedPasswords = passwords.filter(p => p.id !== id);
-      setPasswords(updatedPasswords);
-      
-      const success = await updateVaultOnServer(updatedPasswords);
-      if (!success) {
-        setPasswords(passwords);
-        alert('Failed to delete password from server');
-      }
-    }
-  };
+  // Old delete handler (encrypted-vault flow) removed. Deletion now uses API deletePlainEntry in the UI actions.
 
   const toggleFavorite = async (id) => {
     const updatedPasswords = passwords.map(p => 
@@ -364,7 +366,12 @@ export default function Dashboard() {
               </button>
 
               <button
-                onClick={() => {
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (e) {
+                    console.warn('Logout request failed:', e);
+                  }
                   // Clear session storage and known session keys then redirect to login
                   try {
                     localStorage.removeItem('session_token');
@@ -632,17 +639,26 @@ export default function Dashboard() {
                     {/* Actions */}
                     <div className="flex gap-2">
                       <button
-                        className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
-                          darkMode 
-                            ? 'bg-blue-500 bg-opacity-20 hover:bg-opacity-30 text-blue-400' 
-                            : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
-                        }`}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeletePassword(item.id)}
+                        onClick={async () => {
+                          if (!confirm('Are you sure you want to delete this password?')) return;
+                          // Optimistic UI update
+                          const prev = passwords;
+                          const updated = passwords.filter(p => p.id !== item.id);
+                          setPasswords(updated);
+                          try {
+                            // attempt to delete via API (plaintext storage)
+                            const del = await deletePlainEntry(item.id);
+                            if (!del || del.status !== 'success') {
+                              // restore and show error
+                              setPasswords(prev);
+                              alert(del && del.message ? del.message : 'Failed to delete entry on server');
+                            }
+                          } catch (e) {
+                            console.error('Error deleting entry:', e);
+                            setPasswords(prev);
+                            alert('Network error while deleting entry');
+                          }
+                        }}
                         className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
                           darkMode 
                             ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 

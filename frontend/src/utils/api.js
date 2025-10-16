@@ -51,3 +51,53 @@ export async function updateVault(vault_blob) {
   });
   return res.json();
 }
+
+// Plain entries API (no encryption)
+export async function addPlainEntry(entry) {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/vault/entries`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    },
+    body: JSON.stringify({ entry })
+  });
+  return res.json();
+}
+
+export async function getPlainEntries() {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/vault/entries`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    }
+  });
+  return res.json();
+}
+
+export async function deletePlainEntry(entryId) {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/vault/entries/${entryId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    }
+  });
+  return res.json();
+}
+
+export async function logout() {
+  const sessionToken = localStorage.getItem('session_token');
+  const res = await fetch(`${BASE_URL}/auth/logout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sessionToken}`
+    }
+  });
+  return res.json();
+}
