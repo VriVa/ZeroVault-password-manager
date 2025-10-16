@@ -247,3 +247,37 @@
 2025-10-14 22:36:25,283 - INFO - 127.0.0.1 - - [14/Oct/2025 22:36:25] "OPTIONS /auth/verify HTTP/1.1" 200 -
 2025-10-14 22:36:25,654 - INFO - [LOGIN_SUCCESS] user=aishanisingh5, details=ZKP proof verified successfully.
 2025-10-14 22:36:25,677 - INFO - 127.0.0.1 - - [14/Oct/2025 22:36:25] "POST /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:14:41,175 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-10-16 22:14:41,175 - INFO - [33mPress CTRL+C to quit[0m
+2025-10-16 22:14:41,181 - INFO -  * Restarting with stat
+2025-10-16 22:14:58,201 - WARNING -  * Debugger is active!
+2025-10-16 22:14:58,212 - INFO -  * Debugger PIN: 126-526-793
+2025-10-16 22:21:01,093 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:01] "OPTIONS /auth/register HTTP/1.1" 200 -
+2025-10-16 22:21:01,386 - INFO - [REGISTER] user=trane, details=New user registered.
+2025-10-16 22:21:01,509 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:01] "POST /auth/register HTTP/1.1" 200 -
+2025-10-16 22:21:10,968 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:10] "OPTIONS /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:21:11,283 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:11] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:21:11,538 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:11] "OPTIONS /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:21:11,602 - INFO - [LOGIN_SUCCESS] user=trane, details=ZKP proof verified successfully.
+2025-10-16 22:21:11,612 - INFO - 127.0.0.1 - - [16/Oct/2025 22:21:11] "POST /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:27:34,583 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:34] "OPTIONS /auth/register HTTP/1.1" 200 -
+2025-10-16 22:27:34,860 - INFO - [REGISTER] user=dikson, details=New user registered.
+2025-10-16 22:27:34,870 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:34] "POST /auth/register HTTP/1.1" 200 -
+2025-10-16 22:27:46,695 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:46] "OPTIONS /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:27:47,019 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:47] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:27:47,274 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:47] "OPTIONS /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:27:47,347 - INFO - [LOGIN_SUCCESS] user=dikson, details=ZKP proof verified successfully.
+2025-10-16 22:27:47,358 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:47] "POST /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:27:48,404 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:48] "OPTIONS /vault HTTP/1.1" 200 -
+2025-10-16 22:27:48,717 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:48] "GET /vault HTTP/1.1" 200 -
+2025-10-16 22:27:48,982 - INFO - 127.0.0.1 - - [16/Oct/2025 22:27:48] "GET /vault HTTP/1.1" 200 -
+2025-10-16 22:30:54,807 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:54] "OPTIONS /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:30:55,068 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:55] "POST /auth/challenge HTTP/1.1" 200 -
+2025-10-16 22:30:55,113 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:55] "OPTIONS /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:30:55,390 - INFO - [LOGIN_SUCCESS] user=dikson, details=ZKP proof verified successfully.
+2025-10-16 22:30:55,406 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:55] "POST /auth/verify HTTP/1.1" 200 -
+2025-10-16 22:30:56,468 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:56] "OPTIONS /vault HTTP/1.1" 200 -
+2025-10-16 22:30:56,777 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:56] "OPTIONS /vault HTTP/1.1" 200 -
+2025-10-16 22:30:56,785 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:56] "GET /vault HTTP/1.1" 200 -
+2025-10-16 22:30:57,104 - INFO - 127.0.0.1 - - [16/Oct/2025 22:30:57] "GET /vault HTTP/1.1" 200 -

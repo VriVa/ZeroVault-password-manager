@@ -5,7 +5,7 @@ import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY, generateProof } from '@/utils/zkp';
 import { requestChallenge, verifyLogin } from '@/utils/api';
 
-export default function Login() {
+export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
 
@@ -60,7 +60,17 @@ export default function Login() {
       if (result.status === 'success') {
         setStatus('Login successful!');
         localStorage.setItem('session_token', result.session_token);
-        setTimeout(() => navigate('/vault'), 1000);
+        localStorage.setItem('current_user', username); // Store username
+        
+        // Store password temporarily for vault decryption (cleared on logout)
+        sessionStorage.setItem('temp_password', password);
+        
+        // ✅ CALL THE onLoginSuccess PROP
+        if (onLoginSuccess) {
+          onLoginSuccess();
+        }
+        
+        setTimeout(() => navigate('/dashboard'), 1000); // ✅ CHANGED TO /dashboard
       } else {
         setStatus(result.message || 'Login failed');
       }
@@ -193,7 +203,6 @@ export default function Login() {
               </div>
             </div>
 
-             
             {/* Security Notice */}
             <div className={`rounded-xl p-4 text-sm flex items-start gap-2 ${
               darkMode 
@@ -218,27 +227,28 @@ export default function Login() {
               <LogIn className="w-5 h-5" />
               Sign In
             </button>
+            
             {/* Status Message */}
-{status && (
-  <p
-    className={`mt-4 text-sm font-medium text-center transition-all ${
-      status.toLowerCase().includes('error') || 
-      status.toLowerCase().includes('fail')
-        ? darkMode
-          ? 'text-red-400'
-          : 'text-red-600'
-        : status.toLowerCase().includes('success')
-        ? darkMode
-          ? 'text-green-400'
-          : 'text-green-600'
-        : darkMode
-          ? 'text-gray-400'
-          : 'text-gray-600'
-    }`}
-  >
-    {status}
-  </p>
-)}
+            {status && (
+              <p
+                className={`mt-4 text-sm font-medium text-center transition-all ${
+                  status.toLowerCase().includes('error') || 
+                  status.toLowerCase().includes('fail')
+                    ? darkMode
+                      ? 'text-red-400'
+                      : 'text-red-600'
+                    : status.toLowerCase().includes('success')
+                    ? darkMode
+                      ? 'text-green-400'
+                      : 'text-green-600'
+                    : darkMode
+                      ? 'text-gray-400'
+                      : 'text-gray-600'
+                }`}
+              >
+                {status}
+              </p>
+            )}
           </form>
 
           {/* Register Link */}

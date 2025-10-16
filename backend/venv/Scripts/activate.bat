@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=D:\ZKP_CNS\backend\venv
+set VIRTUAL_ENV=D:\basshoja\ZKP_CNS\backend\venv
 
 if not defined PROMPT set PROMPT=$P$G
 
