@@ -127,7 +127,7 @@ def generate_challenge():
 def verify_proof():
     """
     Verifies Schnorr proof from frontend.
-    Expects JSON: { username, challenge_id, R, s }
+    Expects JSON: { username, challenge_id, t, s }
     Returns vault_blob + session_token if valid.
     Includes in-memory brute-force protection.
     """
@@ -136,7 +136,6 @@ def verify_proof():
     challenge_id = data.get("challenge_id")
     t_hex = data.get("t")  # x,y or compressed hex
     s_int = int(data.get("s"))
-
 
     # 1 Basic validation
     if not all([username, challenge_id, t_hex, s_int]):
@@ -174,6 +173,10 @@ def verify_proof():
             challenge["used"] = True
             token = secrets.token_hex(16)
             sessions[token] = {"username": username}
+
+            # Log successful ZKP verification
+            log_event("LOGIN_SUCCESS", username=username, details="EC Schnorr proof verified successfully.")
+
             vault_blob = user.get("vault_blob", None)
             return jsonify({
                 "status": "success",
@@ -187,6 +190,7 @@ def verify_proof():
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 
