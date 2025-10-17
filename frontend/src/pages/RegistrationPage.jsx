@@ -66,7 +66,7 @@ export default function Register() {
     
 
     try {
-      setStatus('Generating Argon2id root key...');
+      setStatus('Generating kdf root key...');
       const salt_kdf = crypto.getRandomValues(new Uint8Array(16));
       const kdf_params = { alg: 'argon2id', mem_kib: 65536, iter: 2, par: 1 };
 
