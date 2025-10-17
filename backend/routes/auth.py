@@ -127,33 +127,27 @@ def generate_challenge():
 def verify_proof():
     """
     Verifies Schnorr proof from frontend.
-    Expects JSON: { username, challenge_id, t, s }
-    Returns vault_blob + session_token if valid.
+    Expects JSON: { username, challenge_id, R, s }
     """
+    import hashlib, secrets
     from ecdsa import SECP256k1, VerifyingKey
     from binascii import unhexlify
-    import hashlib
-    import secrets
 
     data = request.get_json()
     username = data.get("username")
     challenge_id = data.get("challenge_id")
-    R_hex = data.get("R")  # client sends compressed R
+    R_hex = data.get("R")  # client nonce (compressed)
     s_hex = data.get("s")  # hex string
 
+    # Basic validation
     if not all([username, challenge_id, R_hex, s_hex]):
-        t_hex = data.get("t")  # x,y or compressed hex
-        s_int = int(data.get("s"))
-
-    # 1 Basic validation
-    if not all([username, challenge_id, t_hex, s_int]):
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
-    # Convert s to int
     try:
         s_int = int(s_hex, 16)
     except:
         return jsonify({"status": "error", "message": "Invalid s value"}), 400
+
 
     # Fetch challenge
     challenge = challenges.get(challenge_id)
