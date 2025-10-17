@@ -1,3 +1,4 @@
+// kdf.js
 export async function deriveRootKey(password, salt_kdf, kdf_params) {
   const { iter } = kdf_params;
   const enc = new TextEncoder();
@@ -21,5 +22,5 @@ export async function deriveRootKey(password, salt_kdf, kdf_params) {
     256 // 32 bytes
   );
 
-  return new Uint8Array(derivedBits);
+  return new Uint8Array(derivedBits); // rootKey
 }

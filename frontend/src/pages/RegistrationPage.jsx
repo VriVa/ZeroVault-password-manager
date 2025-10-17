@@ -66,38 +66,47 @@ export default function Register() {
     
 
     try {
-      setStatus('Generating kdf root key...');
-      const salt_kdf = crypto.getRandomValues(new Uint8Array(16));
-      const kdf_params = { alg: 'argon2id', mem_kib: 65536, iter: 2, par: 1 };
+    setStatus('Generating PBKDF2 root key...');
 
-      const rootKey = await deriveRootKey(password, salt_kdf, kdf_params);
-      const { x, publicY } = await computePublicY(rootKey);
+    //  1. Generate random salt
+    const saltArray = crypto.getRandomValues(new Uint8Array(16));
+    const saltBase64 = btoa(String.fromCharCode(...saltArray));
 
-      // Save salt locally for login recomputation
-      localStorage.setItem(`salt_kdf_${username}`, btoa(String.fromCharCode(...salt_kdf)));
-      localStorage.setItem(`kdf_params_${username}`, JSON.stringify(kdf_params));
-      localStorage.setItem(`zkp_x_${username}`, x.toString());
+    // 2. Use PBKDF2 parameters
+    const kdf_params = { alg: 'PBKDF2', iter: 100000 };
 
-      const payload = {
-        username,
-        publicY,
-        salt_kdf: btoa(String.fromCharCode(...salt_kdf)),
-        kdf_params,
-        vault_blob: null
-      };
+    // 3. Derive root key using PBKDF2
+    const rootKey = await deriveRootKey(password, saltBase64, kdf_params);
 
-      const res = await register(payload);
+    //  4. Compute public key Y (no proof generation at registration)
+    const { publicY } = await computePublicY(rootKey);
 
-      if (res.status === 'success') {
-        setStatus('Registration successful!');
-        setTimeout(() => navigate('/login'), 1500);
-      } else {
-        setStatus(res.message || 'Registration failed');
-      }
-    } catch (err) {
-      setStatus('Error: ' + err.message);
+    // 5. Store locally for login recomputation
+    localStorage.setItem(`salt_kdf_${username}`, saltBase64);
+    localStorage.setItem(`kdf_params_${username}`, JSON.stringify(kdf_params));
+
+    //  6. Prepare payload
+    const payload = {
+      username,
+      publicY,
+      salt_kdf: saltBase64,
+      kdf_params,
+      vault_blob: null, // keep your structure consistent
+    };
+
+    //  7. Register with backend
+    const res = await register(payload);
+
+    if (res.status === 'success') {
+      setStatus('Registration successful!');
+      setTimeout(() => navigate('/login'), 1500);
+    } else {
+      setStatus(res.message || 'Registration failed');
     }
-  };
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+  }
+};
 
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
