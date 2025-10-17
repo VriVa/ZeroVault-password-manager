@@ -142,8 +142,8 @@ def verify_proof():
     s_hex = data.get("s")  # hex string
 
     if not all([username, challenge_id, R_hex, s_hex]):
-    t_hex = data.get("t")  # x,y or compressed hex
-    s_int = int(data.get("s"))
+        t_hex = data.get("t")  # x,y or compressed hex
+        s_int = int(data.get("s"))
 
     # 1 Basic validation
     if not all([username, challenge_id, t_hex, s_int]):
