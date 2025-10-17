@@ -29,6 +29,7 @@ export async function verifyLogin(payload) {
 // Add to utils/api.js
 export async function getVault() {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/vault`, {
     method: 'GET',
     headers: { 
@@ -41,6 +42,7 @@ export async function getVault() {
 
 export async function updateVault(vault_blob) {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/vault`, {
     method: 'POST',
     headers: { 
@@ -55,6 +57,7 @@ export async function updateVault(vault_blob) {
 // Plain entries API (no encryption)
 export async function addPlainEntry(entry) {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/vault/entries`, {
     method: 'POST',
     headers: {
@@ -68,6 +71,7 @@ export async function addPlainEntry(entry) {
 
 export async function getPlainEntries() {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/vault/entries`, {
     method: 'GET',
     headers: {
@@ -80,6 +84,7 @@ export async function getPlainEntries() {
 
 export async function deletePlainEntry(entryId) {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/vault/entries/${entryId}`, {
     method: 'DELETE',
     headers: {
@@ -92,6 +97,7 @@ export async function deletePlainEntry(entryId) {
 
 export async function logout() {
   const sessionToken = localStorage.getItem('session_token');
+  if (!sessionToken) return { status: 'error', message: 'Missing session token' };
   const res = await fetch(`${BASE_URL}/auth/logout`, {
     method: 'POST',
     headers: {

@@ -3,7 +3,7 @@ from utils.logger import log_event
 
 import secrets
 from flask import Blueprint, request, jsonify
-from utils.db import users
+from utils.db import users, sessions as sessions_collection
 from datetime import datetime
 import uuid
 import random
@@ -12,6 +12,7 @@ from flask import request
 from ecdsa import SECP256k1, VerifyingKey
 from binascii import unhexlify
 
+# in-memory cache fallback
 sessions = {}
 # SESSION_TTL = 900  time duration
 
@@ -56,7 +57,19 @@ def get_username_from_token():
     if not token:
         return None
 
+    # First check in-memory cache
     session = sessions.get(token)
+    if not session:
+        # Fallback to persistent sessions collection
+        try:
+            doc = sessions_collection.find_one({"token": token})
+            if doc:
+                session = {"username": doc.get("username")}
+                # refresh in-memory cache
+                sessions[token] = session
+        except Exception:
+            session = None
+
     if not session:
         return None
 
@@ -212,6 +225,12 @@ def verify_proof():
             # Generate session token
             token = secrets.token_hex(16)
             sessions[token] = {"username": username}
+            # Persist session
+            try:
+                sessions_collection.insert_one({"token": token, "username": username, "created_at": datetime.utcnow()})
+            except Exception:
+                # if persistence fails, still allow in-memory session
+                pass
 
             # Log successful ZKP verification
             log_event("LOGIN_SUCCESS", username=username, details="EC Schnorr proof verified successfully.")
@@ -374,7 +393,10 @@ def logout():
     token = auth_header.split()[1]
     if token in sessions:
         del sessions[token]
+    # remove persisted session
+    try:
+        sessions_collection.delete_one({"token": token})
+    except Exception:
+        pass
     log_event("LOGOUT", details="User logged out")
     return jsonify({"status": "success", "message": "Logged out"})
-
-    
