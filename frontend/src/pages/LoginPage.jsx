@@ -5,7 +5,7 @@ import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY, generateProof } from '@/utils/zkp';
 import { requestChallenge, verifyLogin } from '@/utils/api';
 
-export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
+export default function Login({ onLoginSuccess }) {  
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
 
@@ -65,12 +65,12 @@ export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
         // Store password temporarily for vault decryption (cleared on logout)
         sessionStorage.setItem('temp_password', password);
         
-        // ✅ CALL THE onLoginSuccess PROP
+      
         if (onLoginSuccess) {
           onLoginSuccess();
         }
         
-        setTimeout(() => navigate('/dashboard'), 1000); // ✅ CHANGED TO /dashboard
+        setTimeout(() => navigate('/dashboard'), 1000); 
       } else {
         setStatus(result.message || 'Login failed');
       }

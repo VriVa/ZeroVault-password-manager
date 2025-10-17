@@ -9,6 +9,8 @@ import uuid
 import random
 from datetime import  timedelta
 from flask import request
+from ecdsa import SECP256k1, VerifyingKey
+from binascii import unhexlify
 
 sessions = {}
 SESSION_TTL = 900  
@@ -60,9 +62,9 @@ def register():
     # Prepare user record
     user_doc = {
         "username": username,
-        "publicY": data["publicY"],
-        "salt_kdf": data["salt_kdf"],
-        "kdf_params": data["kdf_params"],
+        "publicY": data["publicY"], # ec public key hex/base64
+        "salt_kdf": data["salt_kdf"], #base64
+        "kdf_params": data["kdf_params"], #pbkdf2 params
         "vault_blob": data.get("vault_blob", None),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
@@ -75,6 +77,7 @@ def register():
     
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 
@@ -95,7 +98,7 @@ def generate_challenge():
         return jsonify({"status": "error", "message": "User not found"}), 404
 
     # Generate random challenge
-    c = random.randint(100000, 999999) 
+    c = random.randint(1, 2**32) 
     challenge_id = str(uuid.uuid4())
     now = datetime.utcnow()
     expires_at = now + timedelta(seconds=CHALLENGE_TTL)
@@ -118,6 +121,8 @@ def generate_challenge():
 
 
 
+
+
 @auth_bp.route("/auth/verify", methods=["POST"])
 def verify_proof():
     """
@@ -129,87 +134,60 @@ def verify_proof():
     data = request.get_json()
     username = data.get("username")
     challenge_id = data.get("challenge_id")
-    R = data.get("R")
-    s = data.get("s")
+    t_hex = data.get("t")  # x,y or compressed hex
+    s_int = int(data.get("s"))
+
 
     # 1 Basic validation
-    if not all([username, challenge_id, R, s]):
+    if not all([username, challenge_id, t_hex, s_int]):
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
     now = datetime.utcnow()
 
-    # 2 Check if user is blocked due to multiple failed attempts
-    attempt = login_attempts.get(username, {"failed_attempts": 0, "blocked_until": None})
-    if attempt["blocked_until"] and now < attempt["blocked_until"]:
-        return jsonify({
-            "status": "error",
-            "message": "Too many failed attempts. Try again later."
-        }), 403
-
-    # 3 Retrieve challenge from in-memory store
+    # Get challenge
     challenge = challenges.get(challenge_id)
-    if not challenge:
-        return jsonify({"status": "error", "message": "Invalid challenge ID"}), 404
-
-    # 4 Validate challenge info
-    if challenge["username"] != username:
-        return jsonify({"status": "error", "message": "Username mismatch"}), 400
-    if challenge["used"]:
-        return jsonify({"status": "error", "message": "Challenge already used"}), 400
-    if now > challenge["expires_at"]:
+    if not challenge or challenge["username"] != username or challenge["used"]:
+        return jsonify({"status": "error", "message": "Invalid or used challenge"}), 400
+    if datetime.utcnow() > challenge["expires_at"]:
         return jsonify({"status": "error", "message": "Challenge expired"}), 400
 
-    # 5 Fetch user record
+    c_int = challenge["c"]
+
+    # Fetch user
     user = users.find_one({"username": username})
     if not user:
         return jsonify({"status": "error", "message": "User not found"}), 404
 
-    # 6 Verify Schnorr proof (demo modular math)
     try:
-        c = challenge["c"]
-        Y = int(user["publicY"])  # in real ZKP, decode hex/base64 to EC point
-        R_int = int(R)
-        s_int = int(s)
-        p = 1000003  # Demo prime 
+        # Decode public key
+        Y_vk = VerifyingKey.from_string(unhexlify(user["publicY"]), curve=SECP256k1)
+        # Decode t from hex (client must send compressed/uncompressed hex)
+        t_point = VerifyingKey.from_string(unhexlify(t_hex), curve=SECP256k1).pubkey.point
 
-        if (s_int % p) == (R_int + c * Y) % p:
-            # Valid proof
+        # EC Schnorr verification: s*G == t + c*Y
+        G = SECP256k1.generator
+        order = SECP256k1.order
+        lhs = s_int * G
+        rhs = t_point + c_int * Y_vk.pubkey.point
+
+        if lhs == rhs:
             challenge["used"] = True
-
-            # Reset failed attempts on success
-            login_attempts[username] = {"failed_attempts": 0, "blocked_until": None}
-
-            # Create session token without TTL; session persists until logout
             token = secrets.token_hex(16)
             sessions[token] = {"username": username}
-            log_event("LOGIN_SUCCESS", username=username, details="ZKP proof verified successfully.")
-
             vault_blob = user.get("vault_blob", None)
             return jsonify({
                 "status": "success",
                 "message": "Login verified",
                 "vault_blob": vault_blob,
                 "session_token": token
-            }), 200
+            })
 
         else:
-            log_event("LOGIN_FAIL", username=username, details="Invalid proof attempt.")
-
-            # Invalid proof: increment failed attempts
-            attempt["failed_attempts"] += 1
-            if attempt["failed_attempts"] >= MAX_ATTEMPTS:
-                attempt["blocked_until"] = now + BLOCK_DURATION
-
-            login_attempts[username] = attempt
-            return jsonify({
-                "status": "error",
-                "message": "Invalid proof. Attempt {} of {}.".format(
-                    attempt["failed_attempts"], MAX_ATTEMPTS
-                )
-            }), 400
+            return jsonify({"status": "error", "message": "Invalid proof"}), 400
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 
@@ -254,6 +232,7 @@ def update_vault():
 
 
 
+
 @auth_bp.route("/vault/entries", methods=["GET"])
 def get_plain_entries():
     """
@@ -266,6 +245,7 @@ def get_plain_entries():
     user = users.find_one({"username": username})
     entries = user.get("plain_entries", []) if user else []
     return jsonify({"status": "success", "entries": entries})
+
 
 
 @auth_bp.route("/vault/entries", methods=["POST"])
@@ -325,6 +305,9 @@ def delete_plain_entry(entry_id):
             return jsonify({"status": "success", "message": "Entry not found"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
 
 
 @auth_bp.route("/auth/logout", methods=["POST"])

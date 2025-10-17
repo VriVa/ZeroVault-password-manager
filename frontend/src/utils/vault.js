@@ -1,6 +1,7 @@
-// NEW FILE: utils/vault.js
+// utils/vault.js
 export async function deriveVaultKey(rootKey, username) {
   const enc = new TextEncoder();
+  
   
   // HKDF-like derivation
   const key = await crypto.subtle.importKey('raw', rootKey, 'HMAC', false, ['sign']);

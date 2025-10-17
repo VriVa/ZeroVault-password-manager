@@ -7,7 +7,6 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
   const [darkMode, setDarkMode] = useState(false);
   const [sessionToken, setSessionToken] = useState(null);
   const [sessionUser, setSessionUser] = useState(null); // will read from `current_user` localStorage key
