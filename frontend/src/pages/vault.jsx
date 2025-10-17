@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
-  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings,
+  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings, Home,
   X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
 } from 'lucide-react';
+import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
+import { getVault, updateVault, addPlainEntry, getPlainEntries, deletePlainEntry, logout } from '@/utils/api';
+import { deriveRootKey } from '@/utils/kdf';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -13,55 +16,10 @@ export default function Dashboard() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
-
-  // Mock password data
-  const [passwords, setPasswords] = useState([
-    {
-      id: 1,
-      name: 'Gmail',
-      username: 'john@gmail.com',
-      password: 'SecurePass123!',
-      website: 'https://gmail.com',
-      category: 'email',
-      favorite: true,
-      lastModified: '2025-10-10',
-      strength: 'strong'
-    },
-    {
-      id: 2,
-      name: 'Facebook',
-      username: 'john.doe',
-      password: 'MyFb@2024',
-      website: 'https://facebook.com',
-      category: 'social',
-      favorite: false,
-      lastModified: '2025-10-08',
-      strength: 'medium'
-    },
-    {
-      id: 3,
-      name: 'Bank Account',
-      username: 'john_banking',
-      password: 'B@nk!Secure2024',
-      website: 'https://mybank.com',
-      category: 'financial',
-      favorite: true,
-      lastModified: '2025-10-05',
-      strength: 'strong'
-    },
-    {
-      id: 4,
-      name: 'Netflix',
-      username: 'john@gmail.com',
-      password: 'Netflix2024',
-      website: 'https://netflix.com',
-      category: 'entertainment',
-      favorite: false,
-      lastModified: '2025-10-01',
-      strength: 'weak'
-    }
-  ]);
+  
+  // REAL VAULT DATA - replace mock
+  const [passwords, setPasswords] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [newPassword, setNewPassword] = useState({
     name: '',
@@ -74,15 +32,9 @@ export default function Dashboard() {
 
   const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [copiedId, setCopiedId] = useState(null);
-
-  // Categories
-  const categories = [
-    { id: 'all', name: 'All Items', icon: Key, count: passwords.length },
-    { id: 'email', name: 'Email', icon: Mail, count: passwords.filter(p => p.category === 'email').length },
-    { id: 'social', name: 'Social Media', icon: Globe, count: passwords.filter(p => p.category === 'social').length },
-    { id: 'financial', name: 'Financial', icon: CreditCard, count: passwords.filter(p => p.category === 'financial').length },
-    { id: 'entertainment', name: 'Entertainment', icon: Globe, count: passwords.filter(p => p.category === 'entertainment').length },
-  ];
+  const [saveError, setSaveError] = useState(null);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordPromptValue, setPasswordPromptValue] = useState('');
 
   // Password Generator State
   const [generatorConfig, setGeneratorConfig] = useState({
@@ -94,7 +46,175 @@ export default function Dashboard() {
   });
   const [generatedPassword, setGeneratedPassword] = useState('');
 
-  // Functions
+  // Load vault data on component mount
+  useEffect(() => {
+    loadVaultData();
+  }, []);
+
+  const loadVaultData = async () => {
+    try {
+      setLoading(true);
+      const sessionToken = localStorage.getItem('session_token');
+      const username = localStorage.getItem('current_user');
+      
+      if (!sessionToken || !username) {
+        navigate('/login');
+        return;
+      }
+
+      // Try loading persisted plaintext entries first (stored without encryption)
+      try {
+        const plainResp = await getPlainEntries();
+        if (plainResp && plainResp.status === 'success' && Array.isArray(plainResp.entries)) {
+          setPasswords(plainResp.entries || []);
+          setLoading(false);
+          return; // prefer plain entries as the source of truth for the UI
+        }
+      } catch (e) {
+        // ignore and fallback to encrypted vault
+        console.warn('Failed to load plain entries, falling back to encrypted vault:', e);
+      }
+      // Get encrypted vault from server
+      const vaultResponse = await getVault();
+      if (vaultResponse.status !== 'success') {
+        throw new Error('Failed to fetch vault');
+      }
+
+      // Get stored keys for decryption
+      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+      const password = sessionStorage.getItem('temp_password');
+      
+      if (!salt_kdf || !kdf_params || !password) {
+        // If the session doesn't have the in-memory master password, prompt the user to re-enter it
+        console.warn('Missing decryption data; prompting for master password');
+        setShowPasswordPrompt(true);
+        return;
+      }
+
+      // Derive keys and decrypt
+      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+      const vaultKey = await deriveVaultKey(rootKey, username);
+      
+      const decryptedVault = await decryptVault(vaultResponse.vault_blob, vaultKey, username);
+      
+      // Set the actual passwords from vault
+      setPasswords(decryptedVault.passwords || []);
+      
+    } catch (error) {
+      console.error('Failed to load vault:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update vault on server
+  const updateVaultOnServer = async (updatedPasswords) => {
+    try {
+      const username = localStorage.getItem('current_user');
+      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+        const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+        const password = sessionStorage.getItem('temp_password');
+
+        if (!password) {
+          // Missing in-memory temp password used for decryption/encryption
+          return { success: false, code: 'MISSING_TEMP_PASSWORD', error: 'Master password not available in session. Please re-enter your master password to save.' };
+        }
+
+      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+      const vaultKey = await deriveVaultKey(rootKey, username);
+
+      // Create updated vault
+      const updatedVault = {
+        passwords: updatedPasswords,
+        wallet: null
+      };
+
+      // Encrypt and send to server
+      const vault_blob = await encryptVault(updatedVault, vaultKey, username);
+      const updateResponse = await updateVault(vault_blob);
+
+      if (!updateResponse || updateResponse.status !== 'success') {
+        const err = updateResponse && updateResponse.message ? updateResponse.message : 'Unknown server error';
+        console.error('Vault update failed, server response:', updateResponse);
+        return { success: false, error: String(err) };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to update vault:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+  };
+
+  // Password management functions
+  const handleAddPassword = async () => {
+    const newPasswordEntry = {
+      id: Date.now(),
+      ...newPassword,
+      favorite: false,
+      lastModified: new Date().toISOString().split('T')[0],
+      strength: 'medium'
+    };
+    
+    const updatedPasswords = [...passwords, newPasswordEntry];
+  // Close modal immediately (optimistic UX), add locally and attempt to persist. If persist fails mark as pending
+  setShowAddModal(false);
+  setPasswords(updatedPasswords);
+  // Per user request: store entries in MongoDB WITHOUT encryption under plain_entries
+  try {
+    const addRes = await addPlainEntry(newPasswordEntry);
+    if (!addRes || addRes.status !== 'success') {
+      // fallback: mark pending and show error
+      setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
+      setSaveError(addRes && addRes.message ? addRes.message : 'Failed to save plain entry');
+    } else {
+      // saved successfully
+      setNewPassword({
+        name: '',
+        username: '',
+        password: '',
+        website: '',
+        category: 'other',
+        notes: ''
+      });
+      setSaveError(null);
+    }
+  } catch (err) {
+    // optimistic UI already added entry; mark pending for retry
+    setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
+    setSaveError(err.message || 'Network error while saving plain entry');
+  }
+  };
+
+  // Retry syncing any pending entries (attempts to upload the full vault again)
+  const syncPendingPasswords = async () => {
+    const pending = passwords.some(p => p.pending);
+    if (!pending) return;
+    const updated = passwords.map(p => { const cp = { ...p }; delete cp.pending; return cp; });
+    const result = await updateVaultOnServer(updated);
+    if (result.success) {
+      setPasswords(updated);
+      setSaveError(null);
+    } else {
+      setSaveError(result.error || 'Sync failed');
+    }
+  };
+
+  // Old delete handler (encrypted-vault flow) removed. Deletion now uses API deletePlainEntry in the UI actions.
+
+  const toggleFavorite = async (id) => {
+    const updatedPasswords = passwords.map(p => 
+      p.id === id ? { ...p, favorite: !p.favorite } : p
+    );
+    setPasswords(updatedPasswords);
+    
+    await updateVaultOnServer(updatedPasswords);
+  };
+
+  // UI helper functions
   const togglePasswordVisibility = (id) => {
     setVisiblePasswords(prev => {
       const newSet = new Set(prev);
@@ -127,37 +247,15 @@ export default function Dashboard() {
     setGeneratedPassword(password);
   };
 
-  const handleAddPassword = () => {
-    const newEntry = {
-      id: Date.now(),
-      ...newPassword,
-      favorite: false,
-      lastModified: new Date().toISOString().split('T')[0],
-      strength: 'medium'
-    };
-    setPasswords([...passwords, newEntry]);
-    setShowAddModal(false);
-    setNewPassword({
-      name: '',
-      username: '',
-      password: '',
-      website: '',
-      category: 'other',
-      notes: ''
-    });
-  };
 
-  const handleDeletePassword = (id) => {
-    if (confirm('Are you sure you want to delete this password?')) {
-      setPasswords(passwords.filter(p => p.id !== id));
-    }
-  };
-
-  const toggleFavorite = (id) => {
-    setPasswords(passwords.map(p => 
-      p.id === id ? { ...p, favorite: !p.favorite } : p
-    ));
-  };
+  // Categories
+  const categories = [
+    { id: 'all', name: 'All Items', icon: Key, count: passwords.length },
+    { id: 'email', name: 'Email', icon: Mail, count: passwords.filter(p => p.category === 'email').length },
+    { id: 'social', name: 'Social Media', icon: Globe, count: passwords.filter(p => p.category === 'social').length },
+    { id: 'financial', name: 'Financial', icon: CreditCard, count: passwords.filter(p => p.category === 'financial').length },
+    { id: 'entertainment', name: 'Entertainment', icon: Globe, count: passwords.filter(p => p.category === 'entertainment').length },
+  ];
 
   // Filter passwords
   const filteredPasswords = passwords.filter(p => {
@@ -185,6 +283,23 @@ export default function Dashboard() {
     }
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${
+        darkMode ? 'bg-gray-900' : 'bg-gray-50'
+      }`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className={`mt-4 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            Loading your vault...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal dashboard content when not loading
   return (
     <div className={`min-h-screen transition-colors duration-300 ${
       darkMode ? 'bg-gray-900' : 'bg-gray-50'
@@ -197,6 +312,16 @@ export default function Dashboard() {
           : 'bg-white border-gray-200'
       }`}>
         <div className="max-w-7xl mx-auto px-6 py-4">
+          {saveError && (
+            <div className="mb-2">
+              <div className="rounded-md p-3 bg-yellow-50 border border-yellow-200 flex items-center justify-between">
+                <div className="text-sm text-yellow-800">{saveError}</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => syncPendingPasswords()} className="px-3 py-1 bg-yellow-600 text-white rounded">Retry</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             {/* Logo */}
             <div className="flex items-center gap-3">
@@ -228,10 +353,37 @@ export default function Dashboard() {
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               
-              
-              
               <button
                 onClick={() => navigate('/')}
+                className={`px-3 py-2 rounded-lg transition flex items-center gap-2 ${
+                  darkMode 
+                    ? 'bg-gray-700 bg-opacity-10 hover:bg-opacity-20 text-white' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <Home className="w-4 h-4" />
+                <span className="text-sm font-semibold">Home</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    await logout();
+                  } catch (e) {
+                    console.warn('Logout request failed:', e);
+                  }
+                  // Clear session storage and known session keys then redirect to login
+                  try {
+                    localStorage.removeItem('session_token');
+                    localStorage.removeItem('session_user');
+                    localStorage.removeItem('current_user');
+                    localStorage.removeItem('vault_enc');
+                    localStorage.removeItem('wallet_priv_enc');
+                  } catch {
+                    // ignore
+                  }
+                  navigate('/login');
+                }}
                 className={`px-4 py-2 rounded-lg transition flex items-center gap-2 ${
                   darkMode 
                     ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 
@@ -245,6 +397,34 @@ export default function Dashboard() {
           </div>
         </div>
       </header>
+
+      {/* Password re-entry modal for missing temp password */}
+      {showPasswordPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+          <div className={`w-full max-w-md p-6 rounded-lg ${darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}`}>
+            <h3 className="text-lg font-semibold mb-2">Re-enter Master Password</h3>
+            <p className="text-sm mb-4">To save pending items we need your master password for key derivation. This is stored only in your session.</p>
+            <input type="password" value={passwordPromptValue} onChange={(e) => setPasswordPromptValue(e.target.value)} className="w-full px-3 py-2 rounded mb-4" placeholder="Master password" />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowPasswordPrompt(false)} className="px-3 py-2 rounded bg-gray-200">Cancel</button>
+              <button onClick={async () => {
+                // Save to session and attempt to decrypt and sync
+                sessionStorage.setItem('temp_password', passwordPromptValue);
+                setShowPasswordPrompt(false);
+                // Reload vault data (which will decrypt with the provided password)
+                try {
+                  await loadVaultData();
+                } catch (e) {
+                  console.error('Failed to load vault after re-entering password', e);
+                }
+                // Then try to sync pending entries
+                await syncPendingPasswords();
+                setPasswordPromptValue('');
+              }} className="px-3 py-2 rounded bg-blue-600 text-white">Save & Retry</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">
@@ -459,17 +639,26 @@ export default function Dashboard() {
                     {/* Actions */}
                     <div className="flex gap-2">
                       <button
-                        className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
-                          darkMode 
-                            ? 'bg-blue-500 bg-opacity-20 hover:bg-opacity-30 text-blue-400' 
-                            : 'bg-blue-50 hover:bg-blue-100 text-blue-600'
-                        }`}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeletePassword(item.id)}
+                        onClick={async () => {
+                          if (!confirm('Are you sure you want to delete this password?')) return;
+                          // Optimistic UI update
+                          const prev = passwords;
+                          const updated = passwords.filter(p => p.id !== item.id);
+                          setPasswords(updated);
+                          try {
+                            // attempt to delete via API (plaintext storage)
+                            const del = await deletePlainEntry(item.id);
+                            if (!del || del.status !== 'success') {
+                              // restore and show error
+                              setPasswords(prev);
+                              alert(del && del.message ? del.message : 'Failed to delete entry on server');
+                            }
+                          } catch (e) {
+                            console.error('Error deleting entry:', e);
+                            setPasswords(prev);
+                            alert('Network error while deleting entry');
+                          }
+                        }}
                         className={`flex-1 px-3 py-2 rounded-lg transition flex items-center justify-center gap-2 text-sm font-medium ${
                           darkMode 
                             ? 'bg-red-500 bg-opacity-20 hover:bg-opacity-30 text-red-400' 
@@ -515,7 +704,7 @@ export default function Dashboard() {
 
       {/* Add Password Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-50 bg-black/30 backdrop-blur-sm">
           <div className={`w-full max-w-lg rounded-xl p-6 ${
             darkMode ? 'bg-gray-800' : 'bg-white'
           }`}>
