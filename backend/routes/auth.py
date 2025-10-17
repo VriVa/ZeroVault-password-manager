@@ -13,7 +13,7 @@ from ecdsa import SECP256k1, VerifyingKey
 from binascii import unhexlify
 
 sessions = {}
-SESSION_TTL = 900  
+# SESSION_TTL = 900  time duration
 
 challenges = {}
 CHALLENGE_TTL = 120
@@ -27,13 +27,39 @@ auth_bp = Blueprint("auth", __name__)
 
 
 def get_username_from_token():
+    # Try Authorization: Bearer <token>
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split()[1]
+
+    # Fallback to a custom header
+    if not token:
+        token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token")
+
+    # Fallback to query param
+    if not token:
+        token = request.args.get("session_token")
+
+    # Fallback to JSON body (useful for some clients)
+    if not token and request.method in ("POST", "PUT", "PATCH"):
+        try:
+            data = request.get_json(silent=True) or {}
+            token = data.get("session_token")
+        except Exception:
+            token = None
+
+    # Fallback to cookies
+    if not token:
+        token = request.cookies.get("session_token")
+
+    if not token:
         return None
-    token = auth_header.split()[1]
+
     session = sessions.get(token)
     if not session:
         return None
+
     # Sessions are persistent until explicit logout. Do not expire automatically.
     return session.get("username")
 
@@ -310,16 +336,28 @@ def delete_plain_entry(entry_id):
         return jsonify({"status": "error", "message": "Invalid or expired token"}), 401
 
     try:
-        res = users.update_one(
-            {"username": username},
-            {"$pull": {"plain_entries": {"id": entry_id}}, "$set": {"updated_at": datetime.utcnow()}}
-        )
-        if res.modified_count > 0:
-            log_event("PLAIN_ENTRY_DELETE", username=username, details=f"Deleted plain entry {entry_id}")
-            return jsonify({"status": "success", "message": "Entry deleted"}), 200
-        else:
-            # Not found - return success for idempotency
+        # Load current entries to handle potential type mismatches or nested id formats.
+        user = users.find_one({"username": username}, {"plain_entries": 1})
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        entries = user.get("plain_entries", []) or []
+
+        # Filter out entries whose id matches the provided entry_id (string compare of id field)
+        new_entries = [e for e in entries if str(e.get("id")) != str(entry_id)]
+
+        if len(new_entries) == len(entries):
+            # Nothing removed
             return jsonify({"status": "success", "message": "Entry not found"}), 200
+
+        # Write back the filtered array and update timestamp
+        users.update_one(
+            {"username": username},
+            {"$set": {"plain_entries": new_entries, "updated_at": datetime.utcnow()}}
+        )
+        log_event("PLAIN_ENTRY_DELETE", username=username, details=f"Deleted plain entry {entry_id}")
+        return jsonify({"status": "success", "message": "Entry deleted"}), 200
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
