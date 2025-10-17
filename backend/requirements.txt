@@ -6,5 +6,6 @@ flask-cors
 pycryptodome
 
 
-ecdsa
+ecdsa>=0.18.0
+
 

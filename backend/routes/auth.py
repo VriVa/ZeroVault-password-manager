@@ -129,11 +129,19 @@ def verify_proof():
     Verifies Schnorr proof from frontend.
     Expects JSON: { username, challenge_id, t, s }
     Returns vault_blob + session_token if valid.
-    Includes in-memory brute-force protection.
     """
+    from ecdsa import SECP256k1, VerifyingKey
+    from binascii import unhexlify
+    import hashlib
+    import secrets
+
     data = request.get_json()
     username = data.get("username")
     challenge_id = data.get("challenge_id")
+    R_hex = data.get("R")  # client sends compressed R
+    s_hex = data.get("s")  # hex string
+
+    if not all([username, challenge_id, R_hex, s_hex]):
     t_hex = data.get("t")  # x,y or compressed hex
     s_int = int(data.get("s"))
 
@@ -141,16 +149,18 @@ def verify_proof():
     if not all([username, challenge_id, t_hex, s_int]):
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
-    now = datetime.utcnow()
+    # Convert s to int
+    try:
+        s_int = int(s_hex, 16)
+    except:
+        return jsonify({"status": "error", "message": "Invalid s value"}), 400
 
-    # Get challenge
+    # Fetch challenge
     challenge = challenges.get(challenge_id)
     if not challenge or challenge["username"] != username or challenge["used"]:
         return jsonify({"status": "error", "message": "Invalid or used challenge"}), 400
     if datetime.utcnow() > challenge["expires_at"]:
         return jsonify({"status": "error", "message": "Challenge expired"}), 400
-
-    c_int = challenge["c"]
 
     # Fetch user
     user = users.find_one({"username": username})
@@ -158,19 +168,28 @@ def verify_proof():
         return jsonify({"status": "error", "message": "User not found"}), 404
 
     try:
-        # Decode public key
-        Y_vk = VerifyingKey.from_string(unhexlify(user["publicY"]), curve=SECP256k1)
-        # Decode t from hex (client must send compressed/uncompressed hex)
-        t_point = VerifyingKey.from_string(unhexlify(t_hex), curve=SECP256k1).pubkey.point
+        # Decode public key Y (compressed or uncompressed)
+        Y_bytes = unhexlify(user["publicY"])
+        Y_vk = VerifyingKey.from_string(Y_bytes, curve=SECP256k1)
 
-        # EC Schnorr verification: s*G == t + c*Y
+        # Decode R (client nonce) from compressed
+        R_bytes = unhexlify(R_hex)
+        R_vk = VerifyingKey.from_string(R_bytes, curve=SECP256k1)  # supports compressed
+
+        # Recompute c exactly as frontend: SHA256(challenge || R || Y)
+        challenge_bytes = str(challenge["c"]).encode()  # original backend challenge integer
+        data_bytes = challenge_bytes + R_bytes + Y_bytes
+        c_int = int.from_bytes(hashlib.sha256(data_bytes).digest(), "big") % SECP256k1.order
+
+        # EC Schnorr verification: s*G == R + c*Y
         G = SECP256k1.generator
-        order = SECP256k1.order
         lhs = s_int * G
-        rhs = t_point + c_int * Y_vk.pubkey.point
+        rhs = R_vk.pubkey.point + c_int * Y_vk.pubkey.point
 
         if lhs == rhs:
+            # Mark challenge used
             challenge["used"] = True
+            # Generate session token
             token = secrets.token_hex(16)
             sessions[token] = {"username": username}
 
@@ -184,12 +203,12 @@ def verify_proof():
                 "vault_blob": vault_blob,
                 "session_token": token
             })
-
         else:
             return jsonify({"status": "error", "message": "Invalid proof"}), 400
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": f"Verification error: {str(e)}"}), 500
+
 
 
 
