@@ -5,7 +5,7 @@ import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY, generateProof } from '@/utils/zkp';
 import { requestChallenge, verifyLogin } from '@/utils/api';
 
-export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
+export default function Login({ onLoginSuccess }) {  
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
 
@@ -26,36 +26,41 @@ export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
 
   // Handle form submit
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus('');
+  e.preventDefault();
+  setStatus('');
 
-    const username = formData.username;
-    const password = formData.password;
+  const { username, password } = formData;
+  if (!username || !password) return setStatus('Please enter your credentials');
 
-    if (!username || !password) return setStatus('Please enter your credentials');
+  try {
+    setStatus('Requesting challenge...');
+    const challenge = await requestChallenge(username);
+    if (challenge.status !== 'success')
+      return setStatus(challenge.message || 'Challenge request failed');
 
-    try {
-      setStatus('Requesting challenge...');
-      const challenge = await requestChallenge(username);
-      if (challenge.status !== 'success') return setStatus(challenge.message || 'Challenge failed');
+    // Retrieve stored KDF data
+    const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+    const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+    if (!salt_kdf || !kdf_params)
+      return setStatus('No KDF data found. Please re-register.');
 
-      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
-      if (!salt_kdf || !kdf_params) return setStatus('No KDF data found. Please re-register.');
+    // Derive root key using PBKDF2
+    setStatus('Deriving root key...');
+    const rootKey = await deriveRootKey(password, salt_kdf, kdf_params);
 
-      const saltBytes = Uint8Array.from(atob(salt_kdf), (c) => c.charCodeAt(0));
-      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
-      const { x } = await computePublicY(rootKey);
-      const challenge_c = challenge.c;
-      const { R, s } = await generateProof(x, challenge_c);
+    // Compute public/private components
+    const { x } = await computePublicY(rootKey);
 
-      setStatus('Verifying proof...');
-      const result = await verifyLogin({
-        username,
-        challenge_id: challenge.challenge_id,
-        R,
-        s
-      });
+    // Generate ZK proof using challenge from server
+    const { R, s } = await generateProof(x, challenge.c);
+
+    setStatus('Verifying proof...');
+    const result = await verifyLogin({
+      username,
+      challenge_id: challenge.challenge_id,
+      R,
+      s,
+    });
 
       if (result.status === 'success') {
         setStatus('Login successful!');
@@ -65,12 +70,12 @@ export default function Login({ onLoginSuccess }) {  // ✅ ADD THIS PROP
         // Store password temporarily for vault decryption (cleared on logout)
         sessionStorage.setItem('temp_password', password);
         
-        // ✅ CALL THE onLoginSuccess PROP
+      
         if (onLoginSuccess) {
           onLoginSuccess();
         }
         
-        setTimeout(() => navigate('/dashboard'), 1000); // ✅ CHANGED TO /dashboard
+        setTimeout(() => navigate('/dashboard'), 1000); 
       } else {
         setStatus(result.message || 'Login failed');
       }

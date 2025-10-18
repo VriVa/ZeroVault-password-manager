@@ -3,15 +3,18 @@ from utils.logger import log_event
 
 import secrets
 from flask import Blueprint, request, jsonify
-from utils.db import users
+from utils.db import users, sessions as sessions_collection
 from datetime import datetime
 import uuid
 import random
 from datetime import  timedelta
 from flask import request
+from ecdsa import SECP256k1, VerifyingKey
+from binascii import unhexlify
 
+# in-memory cache fallback
 sessions = {}
-SESSION_TTL = 900  
+# SESSION_TTL = 900  time duration
 
 challenges = {}
 CHALLENGE_TTL = 120
@@ -25,13 +28,51 @@ auth_bp = Blueprint("auth", __name__)
 
 
 def get_username_from_token():
+    # Try Authorization: Bearer <token>
     auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split()[1]
+
+    # Fallback to a custom header
+    if not token:
+        token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token")
+
+    # Fallback to query param
+    if not token:
+        token = request.args.get("session_token")
+
+    # Fallback to JSON body (useful for some clients)
+    if not token and request.method in ("POST", "PUT", "PATCH"):
+        try:
+            data = request.get_json(silent=True) or {}
+            token = data.get("session_token")
+        except Exception:
+            token = None
+
+    # Fallback to cookies
+    if not token:
+        token = request.cookies.get("session_token")
+
+    if not token:
         return None
-    token = auth_header.split()[1]
+
+    # First check in-memory cache
     session = sessions.get(token)
     if not session:
+        # Fallback to persistent sessions collection
+        try:
+            doc = sessions_collection.find_one({"token": token})
+            if doc:
+                session = {"username": doc.get("username")}
+                # refresh in-memory cache
+                sessions[token] = session
+        except Exception:
+            session = None
+
+    if not session:
         return None
+
     # Sessions are persistent until explicit logout. Do not expire automatically.
     return session.get("username")
 
@@ -60,9 +101,9 @@ def register():
     # Prepare user record
     user_doc = {
         "username": username,
-        "publicY": data["publicY"],
-        "salt_kdf": data["salt_kdf"],
-        "kdf_params": data["kdf_params"],
+        "publicY": data["publicY"], # ec public key hex/base64
+        "salt_kdf": data["salt_kdf"], #base64
+        "kdf_params": data["kdf_params"], #pbkdf2 params
         "vault_blob": data.get("vault_blob", None),
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
@@ -75,6 +116,7 @@ def register():
     
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 
@@ -95,7 +137,7 @@ def generate_challenge():
         return jsonify({"status": "error", "message": "User not found"}), 404
 
     # Generate random challenge
-    c = random.randint(100000, 999999) 
+    c = random.randint(1, 2**32) 
     challenge_id = str(uuid.uuid4())
     now = datetime.utcnow()
     expires_at = now + timedelta(seconds=CHALLENGE_TTL)
@@ -118,71 +160,80 @@ def generate_challenge():
 
 
 
+
+
 @auth_bp.route("/auth/verify", methods=["POST"])
 def verify_proof():
     """
     Verifies Schnorr proof from frontend.
     Expects JSON: { username, challenge_id, R, s }
-    Returns vault_blob + session_token if valid.
-    Includes in-memory brute-force protection.
     """
+    import hashlib, secrets
+    from ecdsa import SECP256k1, VerifyingKey
+    from binascii import unhexlify
+
     data = request.get_json()
     username = data.get("username")
     challenge_id = data.get("challenge_id")
-    R = data.get("R")
-    s = data.get("s")
+    R_hex = data.get("R")  # client nonce (compressed)
+    s_hex = data.get("s")  # hex string
 
-    # 1 Basic validation
-    if not all([username, challenge_id, R, s]):
+    # Basic validation
+    if not all([username, challenge_id, R_hex, s_hex]):
         return jsonify({"status": "error", "message": "Missing fields"}), 400
 
-    now = datetime.utcnow()
+    try:
+        s_int = int(s_hex, 16)
+    except:
+        return jsonify({"status": "error", "message": "Invalid s value"}), 400
 
-    # 2 Check if user is blocked due to multiple failed attempts
-    attempt = login_attempts.get(username, {"failed_attempts": 0, "blocked_until": None})
-    if attempt["blocked_until"] and now < attempt["blocked_until"]:
-        return jsonify({
-            "status": "error",
-            "message": "Too many failed attempts. Try again later."
-        }), 403
 
-    # 3 Retrieve challenge from in-memory store
+    # Fetch challenge
     challenge = challenges.get(challenge_id)
-    if not challenge:
-        return jsonify({"status": "error", "message": "Invalid challenge ID"}), 404
-
-    # 4 Validate challenge info
-    if challenge["username"] != username:
-        return jsonify({"status": "error", "message": "Username mismatch"}), 400
-    if challenge["used"]:
-        return jsonify({"status": "error", "message": "Challenge already used"}), 400
-    if now > challenge["expires_at"]:
+    if not challenge or challenge["username"] != username or challenge["used"]:
+        return jsonify({"status": "error", "message": "Invalid or used challenge"}), 400
+    if datetime.utcnow() > challenge["expires_at"]:
         return jsonify({"status": "error", "message": "Challenge expired"}), 400
 
-    # 5 Fetch user record
+    # Fetch user
     user = users.find_one({"username": username})
     if not user:
         return jsonify({"status": "error", "message": "User not found"}), 404
 
-    # 6 Verify Schnorr proof (demo modular math)
     try:
-        c = challenge["c"]
-        Y = int(user["publicY"])  # in real ZKP, decode hex/base64 to EC point
-        R_int = int(R)
-        s_int = int(s)
-        p = 1000003  # Demo prime 
+        # Decode public key Y (compressed or uncompressed)
+        Y_bytes = unhexlify(user["publicY"])
+        Y_vk = VerifyingKey.from_string(Y_bytes, curve=SECP256k1)
 
-        if (s_int % p) == (R_int + c * Y) % p:
-            # Valid proof
+        # Decode R (client nonce) from compressed
+        R_bytes = unhexlify(R_hex)
+        R_vk = VerifyingKey.from_string(R_bytes, curve=SECP256k1)  # supports compressed
+
+        # Recompute c exactly as frontend: SHA256(challenge || R || Y)
+        challenge_bytes = str(challenge["c"]).encode()  # original backend challenge integer
+        data_bytes = challenge_bytes + R_bytes + Y_bytes
+        c_int = int.from_bytes(hashlib.sha256(data_bytes).digest(), "big") % SECP256k1.order
+
+        # EC Schnorr verification: s*G == R + c*Y
+        G = SECP256k1.generator
+        lhs = s_int * G
+        rhs = R_vk.pubkey.point + c_int * Y_vk.pubkey.point
+
+        if lhs == rhs:
+            # Mark challenge used
             challenge["used"] = True
-
-            # Reset failed attempts on success
-            login_attempts[username] = {"failed_attempts": 0, "blocked_until": None}
-
-            # Create session token without TTL; session persists until logout
+            # Generate session token
             token = secrets.token_hex(16)
             sessions[token] = {"username": username}
-            log_event("LOGIN_SUCCESS", username=username, details="ZKP proof verified successfully.")
+            # Persist session
+            try:
+                sessions_collection.insert_one({"token": token, "username": username, "created_at": datetime.utcnow()})
+            except Exception:
+                # if persistence fails, still allow in-memory session
+                pass
+
+            # Log successful ZKP verification
+            log_event("LOGIN_SUCCESS", username=username, details="EC Schnorr proof verified successfully.")
 
             vault_blob = user.get("vault_blob", None)
             return jsonify({
@@ -190,26 +241,15 @@ def verify_proof():
                 "message": "Login verified",
                 "vault_blob": vault_blob,
                 "session_token": token
-            }), 200
-
+            })
         else:
-            log_event("LOGIN_FAIL", username=username, details="Invalid proof attempt.")
-
-            # Invalid proof: increment failed attempts
-            attempt["failed_attempts"] += 1
-            if attempt["failed_attempts"] >= MAX_ATTEMPTS:
-                attempt["blocked_until"] = now + BLOCK_DURATION
-
-            login_attempts[username] = attempt
-            return jsonify({
-                "status": "error",
-                "message": "Invalid proof. Attempt {} of {}.".format(
-                    attempt["failed_attempts"], MAX_ATTEMPTS
-                )
-            }), 400
+            return jsonify({"status": "error", "message": "Invalid proof"}), 400
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": f"Verification error: {str(e)}"}), 500
+
+
+
 
 
 
@@ -254,6 +294,7 @@ def update_vault():
 
 
 
+
 @auth_bp.route("/vault/entries", methods=["GET"])
 def get_plain_entries():
     """
@@ -266,6 +307,7 @@ def get_plain_entries():
     user = users.find_one({"username": username})
     entries = user.get("plain_entries", []) if user else []
     return jsonify({"status": "success", "entries": entries})
+
 
 
 @auth_bp.route("/vault/entries", methods=["POST"])
@@ -313,18 +355,32 @@ def delete_plain_entry(entry_id):
         return jsonify({"status": "error", "message": "Invalid or expired token"}), 401
 
     try:
-        res = users.update_one(
-            {"username": username},
-            {"$pull": {"plain_entries": {"id": entry_id}}, "$set": {"updated_at": datetime.utcnow()}}
-        )
-        if res.modified_count > 0:
-            log_event("PLAIN_ENTRY_DELETE", username=username, details=f"Deleted plain entry {entry_id}")
-            return jsonify({"status": "success", "message": "Entry deleted"}), 200
-        else:
-            # Not found - return success for idempotency
+        # Load current entries to handle potential type mismatches or nested id formats.
+        user = users.find_one({"username": username}, {"plain_entries": 1})
+        if not user:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        entries = user.get("plain_entries", []) or []
+
+        # Filter out entries whose id matches the provided entry_id (string compare of id field)
+        new_entries = [e for e in entries if str(e.get("id")) != str(entry_id)]
+
+        if len(new_entries) == len(entries):
+            # Nothing removed
             return jsonify({"status": "success", "message": "Entry not found"}), 200
+
+        users.update_one(
+            {"username": username},
+            {"$set": {"plain_entries": new_entries, "updated_at": datetime.utcnow()}}
+        )
+        log_event("PLAIN_ENTRY_DELETE", username=username, details=f"Deleted plain entry {entry_id}")
+        return jsonify({"status": "success", "message": "Entry deleted"}), 200
+
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
 
 
 @auth_bp.route("/auth/logout", methods=["POST"])
@@ -336,7 +392,10 @@ def logout():
     token = auth_header.split()[1]
     if token in sessions:
         del sessions[token]
+    # remove persisted session
+    try:
+        sessions_collection.delete_one({"token": token})
+    except Exception:
+        pass
     log_event("LOGOUT", details="User logged out")
     return jsonify({"status": "success", "message": "Logged out"})
-
-    

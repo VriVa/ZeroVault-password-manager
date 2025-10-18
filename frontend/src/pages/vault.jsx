@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import  { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
@@ -8,6 +8,8 @@ import {
 import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
 import { getVault, updateVault, addPlainEntry, getPlainEntries, deletePlainEntry, logout } from '@/utils/api';
 import { deriveRootKey } from '@/utils/kdf';
+
+
 
 export default function Dashboard() {
   const navigate = useNavigate();

@@ -1,10 +1,12 @@
-// NEW FILE: utils/vault.js
+// utils/vault.js
 export async function deriveVaultKey(rootKey, username) {
   const enc = new TextEncoder();
   
+  
   // HKDF-like derivation
-  const key = await crypto.subtle.importKey('raw', rootKey, 'HMAC', false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, enc.encode('vault-key|' + username));
+  // importKey for HMAC requires an algorithm object with hash
+  const key = await crypto.subtle.importKey('raw', rootKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign({ name: 'HMAC' }, key, enc.encode('vault-key|' + username));
   return new Uint8Array(signature.slice(0, 32));
 }
 
@@ -12,7 +14,7 @@ export async function encryptVault(data, vaultKey, username) {
   const enc = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   
-  const aesKey = await crypto.subtle.importKey('raw', vaultKey, 'AES-GCM', false, ['encrypt']);
+  const aesKey = await crypto.subtle.importKey('raw', vaultKey, { name: 'AES-GCM' }, false, ['encrypt']);
   const aad = enc.encode(username + '|v1.0');
   
   const encrypted = await crypto.subtle.encrypt(
@@ -44,7 +46,7 @@ export async function decryptVault(vaultBlob, vaultKey, username) {
   encrypted.set(ciphertext);
   encrypted.set(tag, ciphertext.length);
   
-  const aesKey = await crypto.subtle.importKey('raw', vaultKey, 'AES-GCM', false, ['decrypt']);
+  const aesKey = await crypto.subtle.importKey('raw', vaultKey, { name: 'AES-GCM' }, false, ['decrypt']);
   const aad = enc.encode(username + '|v1.0');
   
   const decrypted = await crypto.subtle.decrypt(

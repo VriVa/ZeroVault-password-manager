@@ -5,3 +5,7 @@ dnspython
 flask-cors
 pycryptodome
 
+
+ecdsa>=0.18.0
+
+
