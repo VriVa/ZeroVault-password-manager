@@ -369,7 +369,6 @@ def delete_plain_entry(entry_id):
             # Nothing removed
             return jsonify({"status": "success", "message": "Entry not found"}), 200
 
-        # Write back the filtered array and update timestamp
         users.update_one(
             {"username": username},
             {"$set": {"plain_entries": new_entries, "updated_at": datetime.utcnow()}}
