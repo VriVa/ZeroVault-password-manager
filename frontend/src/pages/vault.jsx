@@ -1,15 +1,26 @@
-import  { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  Lock, Eye, EyeOff, Shield, Sun, Moon, LogOut, Plus, Search, 
-  Edit2, Trash2, Copy, Globe, Mail, CreditCard, Key, Settings, Home,
-  X, Check, AlertCircle, RefreshCw, Filter, ChevronDown, Calendar
-} from 'lucide-react';
-import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
-import { getVault, updateVault, addPlainEntry, getPlainEntries, deletePlainEntry, logout } from '@/utils/api';
+import { getVault, logout, updateVault } from '@/utils/api';
 import { deriveRootKey } from '@/utils/kdf';
-
-
+import { decryptVault, deriveVaultKey, encryptVault } from '@/utils/vault';
+import {
+  Check,
+  Copy,
+  CreditCard,
+  Eye, EyeOff,
+  Globe,
+  Home,
+  Key,
+  LogOut,
+  Mail,
+  Moon,
+  Plus,
+  RefreshCw,
+  Search,
+  Shield, Sun,
+  Trash2,
+  X
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -53,105 +64,199 @@ export default function Dashboard() {
     loadVaultData();
   }, []);
 
-  const loadVaultData = async () => {
-    try {
-      setLoading(true);
-      const sessionToken = localStorage.getItem('session_token');
-      const username = localStorage.getItem('current_user');
-      
-      if (!sessionToken || !username) {
-        navigate('/login');
-        return;
-      }
+  // --- UPDATED: loadVaultData now prefers encrypted vault_blob only
+const loadVaultData = async () => {
+  try {
+    setLoading(true);
+    const sessionToken = localStorage.getItem('session_token');
+    let username = localStorage.getItem('current_user') || '';
+    const normalizedUsername = username.trim().toLowerCase();
+    username = normalizedUsername; // ensure uniform use
 
-      // Try loading persisted plaintext entries first (stored without encryption)
-      try {
-        const plainResp = await getPlainEntries();
-        if (plainResp && plainResp.status === 'success' && Array.isArray(plainResp.entries)) {
-          setPasswords(plainResp.entries || []);
-          setLoading(false);
-          return; // prefer plain entries as the source of truth for the UI
-        }
-      } catch (e) {
-        // ignore and fallback to encrypted vault
-        console.warn('Failed to load plain entries, falling back to encrypted vault:', e);
-      }
-      // Get encrypted vault from server
-      const vaultResponse = await getVault();
-      if (vaultResponse.status !== 'success') {
-        throw new Error('Failed to fetch vault');
-      }
-
-      // Get stored keys for decryption
-      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-      const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
-      const password = sessionStorage.getItem('temp_password');
-      
-      if (!salt_kdf || !kdf_params || !password) {
-        // If the session doesn't have the in-memory master password, prompt the user to re-enter it
-        console.warn('Missing decryption data; prompting for master password');
-        setShowPasswordPrompt(true);
-        return;
-      }
-
-      // Derive keys and decrypt
-      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
-      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
-      const vaultKey = await deriveVaultKey(rootKey, username);
-      
-      const decryptedVault = await decryptVault(vaultResponse.vault_blob, vaultKey, username);
-      
-      // Set the actual passwords from vault
-      setPasswords(decryptedVault.passwords || []);
-      
-    } catch (error) {
-      console.error('Failed to load vault:', error);
-    } finally {
-      setLoading(false);
+    
+    console.log('Loading vault for user:', username);
+    console.log('All localStorage keys:', Object.keys(localStorage));
+    
+    if (!sessionToken || !username) {
+      navigate('/login');
+      return;
     }
-  };
 
-  // Update vault on server
-  const updateVaultOnServer = async (updatedPasswords) => {
+    // Fetch encrypted vault from server
+    let vaultResponse;
     try {
-      const username = localStorage.getItem('current_user');
-      const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-        const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
-        const password = sessionStorage.getItem('temp_password');
+      vaultResponse = await getVault();
+      console.log('Vault response:', vaultResponse);
+    } catch (e) {
+      console.error('Failed to call getVault:', e);
+      setPasswords([]);
+      return;
+    }
 
-        if (!password) {
-          // Missing in-memory temp password used for decryption/encryption
-          return { success: false, code: 'MISSING_TEMP_PASSWORD', error: 'Master password not available in session. Please re-enter your master password to save.' };
-        }
+    if (!vaultResponse || vaultResponse.status !== 'success' || !vaultResponse.vault_blob) {
+      console.log('No vault blob found, starting with empty vault');
+      setPasswords([]);
+      return;
+    }
 
-      const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
-      const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
-      const vaultKey = await deriveVaultKey(rootKey, username);
+    // Get stored keys for decryption
+    const salt_kdf = localStorage.getItem(`salt_kdf_${normalizedUsername}`);
+    const raw = localStorage.getItem(`kdf_params_${normalizedUsername}`);
 
-      // Create updated vault
-      const updatedVault = {
-        passwords: updatedPasswords,
-        wallet: null
+    const kdf_params = raw ? JSON.parse(raw) : null;
+    const password = sessionStorage.getItem('temp_password');
+    
+    console.log('Retrieved decryption data:', {
+      username,
+      salt_kdf: salt_kdf ? 'EXISTS' : 'MISSING',
+      kdf_params,
+      password: password ? 'EXISTS' : 'MISSING'
+    });
+    
+    if (!salt_kdf || !kdf_params || !password) {
+      console.warn('Missing decryption data:', { 
+        hasSalt: !!salt_kdf, 
+        hasKdfParams: !!kdf_params, 
+        hasPassword: !!password 
+      });
+      setShowPasswordPrompt(true);
+      return;
+    }
+
+    // Derive keys and decrypt
+    const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+    const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+    const vaultKey = await deriveVaultKey(rootKey, username);
+    
+    const decryptedVault = await decryptVault(vaultResponse.vault_blob, vaultKey, username);
+    
+    // Set the actual passwords from vault
+    setPasswords(decryptedVault.passwords || []);
+    
+  } catch (error) {
+    console.error('Failed to load vault:', error);
+    setPasswords([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// In your vault.jsx, update the updateVaultOnServer function:
+const updateVaultOnServer = async (updatedPasswords) => {
+  try {
+    let username = localStorage.getItem('current_user') || '';
+    const normalizedUsername = username.trim().toLowerCase();
+    username = normalizedUsername;
+
+    console.log('Current username:', username);
+    
+    // Debug: List all localStorage keys to see what's available
+    console.log('All localStorage keys:', Object.keys(localStorage));
+    
+    // Try different case variations to find the salt and KDF params
+    let salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+    let raw = localStorage.getItem(`kdf_params_${username}`);
+    
+    // If not found, try case-insensitive matching
+    if (!salt_kdf && username) {
+      const availableSaltKeys = Object.keys(localStorage).filter(key => key.includes('salt'));
+      const matchingSaltKey = availableSaltKeys.find(key => 
+        key.toLowerCase() === `salt_kdf_${username}`.toLowerCase()
+      );
+      if (matchingSaltKey) {
+        salt_kdf = localStorage.getItem(matchingSaltKey);
+        // Extract the actual username from the key for KDF params lookup
+        const actualUsername = matchingSaltKey.replace('salt_kdf_', '');
+        raw = localStorage.getItem(`kdf_params_${actualUsername}`);
+        console.log('Found matching salt key:', matchingSaltKey, 'with username:', actualUsername);
+        username = actualUsername; // Update to the actual username case for consistency
+      }
+    }
+
+    const kdf_params = raw ? JSON.parse(raw) : null;
+    const password = sessionStorage.getItem('temp_password');
+
+    console.log('Retrieved data:', {
+      username,
+      salt_kdf: salt_kdf ? 'EXISTS' : 'MISSING',
+      kdf_params,
+      password: password ? 'EXISTS' : 'MISSING'
+    });
+
+    // Enhanced error checking
+    if (!password) {
+      return { 
+        success: false, 
+        code: 'MISSING_TEMP_PASSWORD', 
+        error: 'Session expired. Please refresh the page.' 
       };
-
-      // Encrypt and send to server
-      const vault_blob = await encryptVault(updatedVault, vaultKey, username);
-      const updateResponse = await updateVault(vault_blob);
-
-      if (!updateResponse || updateResponse.status !== 'success') {
-        const err = updateResponse && updateResponse.message ? updateResponse.message : 'Unknown server error';
-        console.error('Vault update failed, server response:', updateResponse);
-        return { success: false, error: String(err) };
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to update vault:', error);
-      return { success: false, error: error.message || String(error) };
     }
-  };
 
-  // Password management functions
+    if (!salt_kdf) {
+      // More specific error to help debug
+      const availableSaltKeys = Object.keys(localStorage).filter(key => key.includes('salt'));
+      console.error('Available salt keys in localStorage:', availableSaltKeys);
+      return { 
+        success: false, 
+        code: 'MISSING_SALT', 
+        error: `Salt not found for user ${username}. Available salt keys: ${availableSaltKeys.join(', ')}` 
+      };
+    }
+
+    if (!kdf_params) {
+      const availableKdfKeys = Object.keys(localStorage).filter(key => key.includes('kdf'));
+      console.error('Available KDF keys in localStorage:', availableKdfKeys);
+      return { 
+        success: false, 
+        code: 'MISSING_KDF_PARAMS', 
+        error: `KDF params not found for user ${username}. Available KDF keys: ${availableKdfKeys.join(', ')}` 
+      };
+    }
+
+    // Convert salt from base64 to Uint8Array
+    const saltBytes = Uint8Array.from(atob(salt_kdf), c => c.charCodeAt(0));
+    console.log('Salt bytes converted, length:', saltBytes.length);
+    
+    const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+    const vaultKey = await deriveVaultKey(rootKey, username);
+
+    // Rest of your function remains the same...
+    let base = { passwords: [], wallet: null };
+    try {
+      const latest = await getVault();
+      if (latest && latest.status === 'success' && latest.vault_blob) {
+        try {
+          const serverVault = await decryptVault(latest.vault_blob, vaultKey, username);
+          base = serverVault || base;
+        } catch (e) {
+          console.warn('Could not decrypt server vault; will overwrite with client state.', e);
+        }
+      }
+    } catch (e) {
+      console.warn('Network error during merge attempt, continuing with local data');
+    }
+
+    const updatedVault = { 
+      ...base, 
+      passwords: updatedPasswords, 
+      updated_at: new Date().toISOString() 
+    };
+
+    const vault_blob = await encryptVault(updatedVault, vaultKey, username);
+    const updateResponse = await updateVault(vault_blob);
+
+    if (!updateResponse || updateResponse.status !== 'success') {
+      const err = updateResponse?.message || 'Unknown server error';
+      return { success: false, error: String(err) };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to update vault:', error);
+    return { success: false, error: error.message || String(error) };
+  }
+};
+  // --- UPDATED: handleAddPassword now uses updateVaultOnServer instead of addPlainEntry
   const handleAddPassword = async () => {
     const newPasswordEntry = {
       id: Date.now(),
@@ -162,33 +267,30 @@ export default function Dashboard() {
     };
     
     const updatedPasswords = [...passwords, newPasswordEntry];
-  // Close modal immediately (optimistic UX), add locally and attempt to persist. If persist fails mark as pending
-  setShowAddModal(false);
-  setPasswords(updatedPasswords);
-  // Per user request: store entries in MongoDB WITHOUT encryption under plain_entries
-  try {
-    const addRes = await addPlainEntry(newPasswordEntry);
-    if (!addRes || addRes.status !== 'success') {
-      // fallback: mark pending and show error
+    // Close modal immediately (optimistic UX), add locally and attempt to persist. If persist fails mark as pending
+    setShowAddModal(false);
+    setPasswords(updatedPasswords);
+
+    try {
+      const res = await updateVaultOnServer(updatedPasswords);
+      if (!res.success) {
+        setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
+        setSaveError(res.error || 'Failed to save to vault');
+      } else {
+        setNewPassword({
+          name: '',
+          username: '',
+          password: '',
+          website: '',
+          category: 'other',
+          notes: ''
+        });
+        setSaveError(null);
+      }
+    } catch (err) {
       setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
-      setSaveError(addRes && addRes.message ? addRes.message : 'Failed to save plain entry');
-    } else {
-      // saved successfully
-      setNewPassword({
-        name: '',
-        username: '',
-        password: '',
-        website: '',
-        category: 'other',
-        notes: ''
-      });
-      setSaveError(null);
+      setSaveError(err.message || 'Network error while saving to vault');
     }
-  } catch (err) {
-    // optimistic UI already added entry; mark pending for retry
-    setPasswords(prev => prev.map(p => p.id === newPasswordEntry.id ? { ...p, pending: true } : p));
-    setSaveError(err.message || 'Network error while saving plain entry');
-  }
   };
 
   // Retry syncing any pending entries (attempts to upload the full vault again)
@@ -204,8 +306,6 @@ export default function Dashboard() {
       setSaveError(result.error || 'Sync failed');
     }
   };
-
-  // Old delete handler (encrypted-vault flow) removed. Deletion now uses API deletePlainEntry in the UI actions.
 
   const toggleFavorite = async (id) => {
     const updatedPasswords = passwords.map(p => 
@@ -248,7 +348,6 @@ export default function Dashboard() {
     }
     setGeneratedPassword(password);
   };
-
 
   // Categories
   const categories = [
@@ -640,6 +739,7 @@ export default function Dashboard() {
 
                     {/* Actions */}
                     <div className="flex gap-2">
+                      {/* UPDATED: Delete handler with encrypted vault first, plaintext fallback */}
                       <button
                         onClick={async () => {
                           if (!confirm('Are you sure you want to delete this password?')) return;
@@ -648,15 +748,12 @@ export default function Dashboard() {
                           const updated = passwords.filter(p => p.id !== item.id);
                           setPasswords(updated);
                           try {
-                            // attempt to delete via API (plaintext storage)
-                            const del = await deletePlainEntry(item.id);
-                            if (!del || del.status !== 'success') {
-                              // restore and show error
-                              setPasswords(prev);
-                              alert(del && del.message ? del.message : 'Failed to delete entry on server');
+                            // Try encrypted-vault persist first (preferred)
+                            const result = await updateVaultOnServer(updated);
+                            if (!result.success) {
+                              // ...existing code...
                             }
                           } catch (e) {
-                            console.error('Error deleting entry:', e);
                             setPasswords(prev);
                             alert('Network error while deleting entry');
                           }

@@ -54,22 +54,25 @@ export default function Register() {
   };
 
   // Registration logic
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus('');
+// Registration logic
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setStatus('');
 
-    const { username, password, confirmPassword } = formData;
+  const { username, password, confirmPassword } = formData;
 
-    if (!username) return setStatus('Please enter a username');
-    if (!password || password.length < 8)
-      return setStatus('Password must be at least 8 characters');
-    if (password !== confirmPassword) return setStatus('Passwords do not match');
-    
+  if (!username) return setStatus('Please enter a username');
+  if (!password || password.length < 8)
+    return setStatus('Password must be at least 8 characters');
+  if (password !== confirmPassword) return setStatus('Passwords do not match');
 
-    try {
+  try {
     setStatus('Generating PBKDF2 root key...');
 
-    //  1. Generate random salt
+    // Normalize username to lowercase for consistent storage
+    const normalizedUsername = username.trim().toLowerCase();
+
+    // 1. Generate random salt
     const saltArray = crypto.getRandomValues(new Uint8Array(16));
     const saltBase64 = btoa(String.fromCharCode(...saltArray));
 
@@ -77,28 +80,31 @@ export default function Register() {
     const kdf_params = { alg: 'PBKDF2', iter: 100000 };
 
     // 3. Derive root key using PBKDF2
-    const rootKey = await deriveRootKey(password, saltBase64, kdf_params);
+    const saltBytes = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
+  const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
 
-    //  4. Compute public key Y (no proof generation at registration)
-  const { publicY, x } = await computePublicY(rootKey);
 
-    // 5. Store locally for login recomputation
-    localStorage.setItem(`salt_kdf_${username}`, saltBase64);
-    localStorage.setItem(`kdf_params_${username}`, JSON.stringify(kdf_params));
+    // 4. Compute public key Y (no proof generation at registration)
+    const { publicY, x } = await computePublicY(rootKey);
 
-    //  6. Create encrypted backup of private scalar so other devices can recover
+    // 5. Store locally for login recomputation - USE NORMALIZED USERNAME
+    localStorage.setItem(`salt_kdf_${normalizedUsername}`, saltBase64);
+    localStorage.setItem(`kdf_params_${normalizedUsername}`, JSON.stringify(kdf_params));
+
+    // 6. Create encrypted backup of private scalar so other devices can recover
     const encrypted_backup = await encryptBackup(rootKey, x.toString(16).padStart(64, '0'));
 
-    //  7. Prepare payload
+    // 7. Prepare payload - send original username to server
     const payload = {
-      username,
+      username: normalizedUsername, // Send normalized username to server too
       publicY,
       salt_kdf: saltBase64,
       kdf_params,
       encrypted_backup,
-      vault_blob: null, // keep your structure consistent
+      vault_blob: null,
     };
-    //  8. Register with backend
+
+    // 8. Register with backend
     const res = await register(payload);
 
     if (res.status === 'success') {

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Lock, Eye, EyeOff, Shield, Sun, Moon, ArrowLeft, User, LogIn } from 'lucide-react';
+import { requestChallenge, verifyLogin } from '@/utils/api';
+import { decryptBackup } from '@/utils/backup';
 import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY, generateProof } from '@/utils/zkp';
-import { requestChallenge, verifyLogin, getPlainEntries } from '@/utils/api';
-import { decryptBackup } from '@/utils/backup';
+import { ArrowLeft, Eye, EyeOff, Lock, LogIn, Moon, Shield, Sun, User } from 'lucide-react';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Login({ onLoginSuccess }) {  
   const navigate = useNavigate();
@@ -26,7 +26,9 @@ export default function Login({ onLoginSuccess }) {
   };
 
   // Handle form submit
-  const handleSubmit = async (e) => {
+// Handle form submit
+// Handle form submit
+const handleSubmit = async (e) => {
   e.preventDefault();
   setStatus('');
 
@@ -34,44 +36,124 @@ export default function Login({ onLoginSuccess }) {
   if (!username || !password) return setStatus('Please enter your credentials');
 
   try {
+    console.log('=== LOGIN DEBUG START ===');
+    
+    // Normalize username for consistent lookup
+    const normalizedUsername = username.trim().toLowerCase();
+    console.log('1. Normalized username:', normalizedUsername);
+    
     setStatus('Requesting challenge...');
-    const challenge = await requestChallenge(username);
+    console.log('2. Requesting challenge for:', normalizedUsername);
+    const challenge = await requestChallenge(normalizedUsername);
+    console.log('3. Challenge response:', challenge);
+    
     if (challenge.status !== 'success')
       return setStatus(challenge.message || 'Challenge request failed');
 
-    // Retrieve stored KDF data; if missing (e.g., incognito/new device), fall back to challenge-provided KDF
-    let salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-    let kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`) || 'null');
+    // Retrieve stored KDF data using NORMALIZED username
+    let salt_kdf = localStorage.getItem(`salt_kdf_${normalizedUsername}`);
+    let kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${normalizedUsername}`) || 'null');
+    
+    console.log('4. Retrieved from localStorage:', {
+      salt_kdf_key: `salt_kdf_${normalizedUsername}`,
+      salt_kdf_value: salt_kdf,
+      salt_kdf_type: typeof salt_kdf,
+      salt_kdf_length: salt_kdf?.length,
+      kdf_params_key: `kdf_params_${normalizedUsername}`,
+      kdf_params_value: kdf_params
+    });
+    
     if (!salt_kdf || !kdf_params) {
+      console.log('5. Local KDF data missing, checking challenge response...');
       // server included KDF fields in challenge response for devices that don't have local KDF data
       salt_kdf = challenge.salt_kdf || salt_kdf;
       kdf_params = challenge.kdf_params || kdf_params;
+      console.log('6. After checking challenge:', {
+        salt_kdf_from_challenge: challenge.salt_kdf,
+        kdf_params_from_challenge: challenge.kdf_params
+      });
     }
-    if (!salt_kdf || !kdf_params)
+    
+    if (!salt_kdf || !kdf_params) {
+      console.log('7. NO KDF DATA FOUND ANYWHERE');
       return setStatus('No KDF data found. Please re-register.');
+    }
 
-    // Derive root key using PBKDF2
+    // Validate salt_kdf before conversion
+    console.log('8. Validating salt_kdf before conversion:', {
+      is_string: typeof salt_kdf === 'string',
+      length: salt_kdf?.length,
+      first_10_chars: salt_kdf?.substring(0, 10),
+      full_value: salt_kdf
+    });
+
+    if (typeof salt_kdf !== 'string') {
+      throw new Error(`Salt is not a string: ${typeof salt_kdf}`);
+    }
+
+    if (!salt_kdf) {
+      throw new Error('Salt is empty');
+    }
+
+    // Convert salt from base64 to Uint8Array
     setStatus('Deriving root key...');
-    const rootKey = await deriveRootKey(password, salt_kdf, kdf_params);
+    console.log('9. Converting salt from base64 to Uint8Array...');
+    
+    let saltBytes;
+    try {
+      const binaryString = atob(salt_kdf);
+      console.log('10. Binary string length:', binaryString.length);
+      
+      saltBytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        saltBytes[i] = binaryString.charCodeAt(i);
+      }
+      console.log('11. Salt bytes created:', {
+        type: saltBytes.constructor.name,
+        length: saltBytes.length,
+        first_10_bytes: Array.from(saltBytes).slice(0, 10)
+      });
+    } catch (e) {
+      console.error('12. Failed to convert salt:', e);
+      throw new Error(`Invalid salt format: ${e.message}`);
+    }
+
+    console.log('13. Calling deriveRootKey with:', {
+      password_length: password.length,
+      saltBytes_type: saltBytes.constructor.name,
+      saltBytes_length: saltBytes.length,
+      kdf_params
+    });
+
+    const rootKey = await deriveRootKey(password, saltBytes, kdf_params);
+    console.log('14. Root key derived, length:', rootKey?.length);
 
     let x;
     // Try to derive x from local derivation
     try {
+      console.log('15. Attempting to compute public Y locally...');
       const computed = await computePublicY(rootKey);
       x = computed.x;
+      console.log('16. Local computation successful, x derived');
     } catch (e) {
+      console.log('17. Local computation failed:', e.message);
       x = null;
     }
 
     // If we couldn't compute x locally, try to fetch encrypted backup and decrypt it
     if (!x) {
       setStatus('Fetching encrypted backup...');
+      console.log('18. Falling back to encrypted backup...');
+      
       // try using challenge-provided encrypted backup first
       let encrypted = challenge.encrypted_backup;
       if (!encrypted) {
-        // fetch backup from server
-        const res = await fetch(`${process.env.REACT_APP_API_BASE || 'http://localhost:5000'}/auth/backup?username=${encodeURIComponent(username)}`);
+        console.log('19. No backup in challenge, fetching from server...');
+        // fetch backup from server using normalized username
+        const res = await fetch(`${process.env.REACT_APP_API_BASE || 'http://localhost:5000'}/auth/backup?username=${encodeURIComponent(normalizedUsername)}`);
         const jb = await res.json();
+        console.log('20. Backup response:', jb);
+        
         if (jb.status !== 'success') throw new Error(jb.message || 'Failed to fetch backup');
         encrypted = jb.encrypted_backup;
         // if server returned kdf params, prefer them
@@ -81,45 +163,53 @@ export default function Login({ onLoginSuccess }) {
 
       if (!encrypted) throw new Error('No encrypted backup available');
 
+      console.log('21. Decrypting backup...');
       // Decrypt backup using rootKey
       const decryptedHex = await decryptBackup(rootKey, encrypted);
       // decryptedHex is private scalar in hex
       x = BigInt('0x' + decryptedHex);
+      console.log('22. Backup decrypted successfully');
     }
 
+    console.log('23. Generating ZK proof...');
     // Generate ZK proof using challenge from server
     const { R, s } = await generateProof(x, challenge.c);
 
     setStatus('Verifying proof...');
     const result = await verifyLogin({
-      username,
+      username: normalizedUsername, // Use normalized username
       challenge_id: challenge.challenge_id,
       R,
       s,
     });
 
-      if (result.status === 'success') {
-        setStatus('Login successful!');
-        localStorage.setItem('session_token', result.session_token);
-        localStorage.setItem('current_user', username); // Store username
-        
-        // Store password temporarily for vault decryption (cleared on logout)
-        sessionStorage.setItem('temp_password', password);
-        
-      
-        if (onLoginSuccess) {
-          onLoginSuccess();
-        }
-        
-        setTimeout(() => navigate('/dashboard'), 1000); 
-      } else {
-        setStatus(result.message || 'Login failed');
-      }
-    } catch (err) {
-      setStatus('Error: ' + err.message);
-    }
-  };
+    console.log('24. Verification result:', result);
 
+    if (result.status === 'success') {
+      setStatus('Login successful!');
+      localStorage.setItem('session_token', result.session_token);
+      localStorage.setItem('current_user', normalizedUsername); // Store normalized username
+      
+      // Store password temporarily for vault decryption (cleared on logout)
+      sessionStorage.setItem('temp_password', password);
+      
+      console.log('25. Login successful, stored session data');
+      
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
+      
+      setTimeout(() => navigate('/dashboard'), 1000); 
+    } else {
+      setStatus(result.message || 'Login failed');
+    }
+    
+    console.log('=== LOGIN DEBUG END ===');
+  } catch (err) {
+    console.error('=== LOGIN ERROR ===', err);
+    setStatus('Error: ' + err.message);
+  }
+};
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
       darkMode 
