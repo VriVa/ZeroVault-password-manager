@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Key, Eye, EyeOff, Shield, Mail, CheckCircle, Sun, Moon, ArrowLeft, User } from 'lucide-react';
 import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY } from '@/utils/zkp';
+import { encryptBackup } from '@/utils/backup';
 import { register } from '@/utils/api';
 
 export default function Register() {
@@ -79,22 +80,25 @@ export default function Register() {
     const rootKey = await deriveRootKey(password, saltBase64, kdf_params);
 
     //  4. Compute public key Y (no proof generation at registration)
-    const { publicY } = await computePublicY(rootKey);
+  const { publicY, x } = await computePublicY(rootKey);
 
     // 5. Store locally for login recomputation
     localStorage.setItem(`salt_kdf_${username}`, saltBase64);
     localStorage.setItem(`kdf_params_${username}`, JSON.stringify(kdf_params));
 
-    //  6. Prepare payload
+    //  6. Create encrypted backup of private scalar so other devices can recover
+    const encrypted_backup = await encryptBackup(rootKey, x.toString(16).padStart(64, '0'));
+
+    //  7. Prepare payload
     const payload = {
       username,
       publicY,
       salt_kdf: saltBase64,
       kdf_params,
+      encrypted_backup,
       vault_blob: null, // keep your structure consistent
     };
-
-    //  7. Register with backend
+    //  8. Register with backend
     const res = await register(payload);
 
     if (res.status === 'success') {

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, Eye, EyeOff, Shield, Sun, Moon, ArrowLeft, User, LogIn } from 'lucide-react';
 import { deriveRootKey } from '@/utils/kdf';
 import { computePublicY, generateProof } from '@/utils/zkp';
-import { requestChallenge, verifyLogin } from '@/utils/api';
+import { requestChallenge, verifyLogin, getPlainEntries } from '@/utils/api';
+import { decryptBackup } from '@/utils/backup';
 
 export default function Login({ onLoginSuccess }) {  
   const navigate = useNavigate();
@@ -38,9 +39,14 @@ export default function Login({ onLoginSuccess }) {
     if (challenge.status !== 'success')
       return setStatus(challenge.message || 'Challenge request failed');
 
-    // Retrieve stored KDF data
-    const salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
-    const kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`));
+    // Retrieve stored KDF data; if missing (e.g., incognito/new device), fall back to challenge-provided KDF
+    let salt_kdf = localStorage.getItem(`salt_kdf_${username}`);
+    let kdf_params = JSON.parse(localStorage.getItem(`kdf_params_${username}`) || 'null');
+    if (!salt_kdf || !kdf_params) {
+      // server included KDF fields in challenge response for devices that don't have local KDF data
+      salt_kdf = challenge.salt_kdf || salt_kdf;
+      kdf_params = challenge.kdf_params || kdf_params;
+    }
     if (!salt_kdf || !kdf_params)
       return setStatus('No KDF data found. Please re-register.');
 
@@ -48,8 +54,38 @@ export default function Login({ onLoginSuccess }) {
     setStatus('Deriving root key...');
     const rootKey = await deriveRootKey(password, salt_kdf, kdf_params);
 
-    // Compute public/private components
-    const { x } = await computePublicY(rootKey);
+    let x;
+    // Try to derive x from local derivation
+    try {
+      const computed = await computePublicY(rootKey);
+      x = computed.x;
+    } catch (e) {
+      x = null;
+    }
+
+    // If we couldn't compute x locally, try to fetch encrypted backup and decrypt it
+    if (!x) {
+      setStatus('Fetching encrypted backup...');
+      // try using challenge-provided encrypted backup first
+      let encrypted = challenge.encrypted_backup;
+      if (!encrypted) {
+        // fetch backup from server
+        const res = await fetch(`${process.env.REACT_APP_API_BASE || 'http://localhost:5000'}/auth/backup?username=${encodeURIComponent(username)}`);
+        const jb = await res.json();
+        if (jb.status !== 'success') throw new Error(jb.message || 'Failed to fetch backup');
+        encrypted = jb.encrypted_backup;
+        // if server returned kdf params, prefer them
+        salt_kdf = salt_kdf || jb.salt_kdf;
+        kdf_params = kdf_params || jb.kdf_params;
+      }
+
+      if (!encrypted) throw new Error('No encrypted backup available');
+
+      // Decrypt backup using rootKey
+      const decryptedHex = await decryptBackup(rootKey, encrypted);
+      // decryptedHex is private scalar in hex
+      x = BigInt('0x' + decryptedHex);
+    }
 
     // Generate ZK proof using challenge from server
     const { R, s } = await generateProof(x, challenge.c);
